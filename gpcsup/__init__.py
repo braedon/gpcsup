@@ -280,6 +280,12 @@ def construct_app(es_dao, **kwargs):
             redirect(f'/?domain={domain}')
 
         scan_data = site['scan_data']
+
+        # If the site redirected to (or from) a www subdomain during the scan, show the user the
+        # redirected domain instead of the original - presumably that's the one they should use.
+        if scan_data.get('www_redirect'):
+            domain = scan_data['redirect_domain']
+
         if scan_data['supports_gpc']:
             warnings = scan_data.get('warnings')
             message = None
