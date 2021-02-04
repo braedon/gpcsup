@@ -30,7 +30,7 @@ rebase('base.tpl', title=f'GPC supported by {domain}', open_graph=True,
     </div>
     <div class="section">
       <div class="linkRow">
-        <a href="/">Check Another</a>
+        <a href="/">Check Another Site</a>
       </div>
     </div>
   </div>
