@@ -121,8 +121,13 @@ def scan_gpc(domain):
         data['error'] = 'unexpected-status'
         return data
 
-    data['content_type'] = resp.headers.get('Content-Type')
-    if data.get('content_type') != 'application/json':
+    content_type = resp.headers.get('Content-Type')
+    if content_type:
+        content_type = content_type.strip()
+        if ';' in content_type:
+            content_type = content_type.split(';', 1)[0].strip()
+
+    if content_type != 'application/json':
         data['error'] = 'wrong-content-type'
         return data
 
