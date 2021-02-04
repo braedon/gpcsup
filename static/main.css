@@ -1,9 +1,12 @@
 :root {
   --color-bg: #FFF;
+  --color-fg: #444;
   --color-primary: rgb(0% 53.49% 36.28%); /*lch(50% 66 160.835), #00885D*/
   --color-accent: rgb(21.96% 45.77% 90.66%); /*lch(50% 66 280)*/
   --color-error: rgb(82.07% 25.69% 26.33%); /*lch(50% 66 30)*/
   --color-unknown: rgb(75.73% 33.19% 12.24%); /*lch(50% 66 50)*/
+  --color-border: #DDD;
+  --color-shadow: #DDD;
 }
 
 * {
@@ -45,14 +48,14 @@ input,
 button {
   padding: 10px;
 
-  border: 1px solid #DDD;
+  border: 1px solid var(--color-border);
   border-radius: 10px;
 
-  color: #444;
+  color: var(--color-fg);
 }
 input {
   background-color: white;
-  box-shadow: inset 0px 1px 3px #DDD;
+  box-shadow: inset 0px 1px 3px var(--color-shadow);
 
   overflow: auto;
 }
@@ -154,7 +157,7 @@ body {
 
   background-color: var(--color-bg);
 
-  color: #444;
+  color: var(--color-fg);
   font-size: 20px;
   font-family: 'Roboto', Arial, sans-serif;
 }
@@ -167,9 +170,9 @@ main {
   width: 300px;
   padding: 20px;
 
-  border: 1px solid #DDD;
-  box-shadow: 0px 1px 3px #DDD;
+  border: 1px solid var(--color-border);
   border-radius: 20px;
+  box-shadow: 0px 1px 3px var(--color-shadow);
 }
 
 /* If we're probably on a mobile device, make the main box fill the screen. */
