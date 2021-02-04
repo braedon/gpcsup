@@ -182,7 +182,7 @@ def construct_app(es_dao, **kwargs):
     # Firefox for Android seems to consider the icon loader a different origin.
     #
     # Favicon stuff generated at:
-    # https://favicon.io/favicon-generator/?t=gs&ff=Roboto Slab&fs=80&fc=%23fff&b=rounded&bc=%23058a5e
+    # https://favicon.io/favicon-generator/?t=gs&ff=Roboto Slab&fs=80&fc=%23fff&b=rounded&bc=%2300885D
     @app.get('/favicon.ico',
              sh_updates={'Cross-Origin-Resource-Policy': 'cross-origin'})
     def icon():
