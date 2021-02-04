@@ -44,8 +44,22 @@ SERVER_READY = True
 # TODO: Handle internationalized domains
 def normalise_domain(domain):
     domain = domain.lower()
-    if domain[-1] == '.':
+
+    # Handle users copying domains with the scheme attached.
+    # Only allow these two schemes - GPC is for HTTP(s).
+    if domain.startswith('https://'):
+        domain = domain[8:]
+    elif domain.startswith('http://'):
+        domain = domain[7:]
+
+    # Similar to handling schemes, handle one slash at the end of the domain.
+    if domain.endswith('/'):
         domain = domain[:-1]
+
+    # Strip any optional trailing period from the domain.
+    if domain.endswith('.'):
+        domain = domain[:-1]
+
     return domain
 
 
