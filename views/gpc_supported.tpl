@@ -18,6 +18,15 @@ rebase('base.tpl', title=f'GPC supported by {domain}', open_graph=True,
           {{domain}}
         </a>
       </p>
+      % if defined('message') and message:
+      <p>
+        However, the GPC support resource doesn't follow the
+        <a href="https://globalprivacycontrol.github.io/gpc-spec/#gpc-support-resource"
+           target="_blank" rel="noopener noreferrer">spec</a>
+        exactly -
+        {{message}}
+      </p>
+      % end
     </div>
     <div class="section">
       <div class="linkRow">

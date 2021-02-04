@@ -64,6 +64,7 @@ def scan_gpc(domain):
         'url': resp.url,
         'status_code': resp.status_code,
         'supports_gpc': False,
+        'warnings': [],
     }
 
     if resp.history:
@@ -128,8 +129,7 @@ def scan_gpc(domain):
             content_type = content_type.split(';', 1)[0].strip()
 
     if content_type != 'application/json':
-        data['error'] = 'wrong-content-type'
-        return data
+        data['warnings'].append('wrong-content-type')
 
     try:
         resp_json = resp.json()
@@ -144,8 +144,7 @@ def scan_gpc(domain):
     data['json'] = resp_json
 
     if resp_json.get('version') != 1:
-        data['error'] = 'invalid-version-field'
-        return data
+        data['warnings'].append('invalid-version-field')
 
     if 'gpc' not in resp_json or not isinstance(resp_json['gpc'], bool):
         data['error'] = 'invalid-gpc-field'
@@ -265,7 +264,22 @@ def construct_app(es_dao, **kwargs):
 
         scan_data = site['scan_data']
         if scan_data['supports_gpc']:
-            r = template('gpc_supported', domain=domain)
+            warnings = scan_data.get('warnings')
+            message = None
+            if warnings:
+                bad_fields = []
+                for warning in warnings:
+                    if warning == 'wrong-content-type':
+                        bad_fields.append('content type')
+                    elif warning == 'invalid-version-field':
+                        bad_fields.append('version field')
+                    else:
+                        log.error('Unsupported GPC scan warning %(warning)s', {'warning': warning})
+
+                if bad_fields:
+                    message = 'incorrect ' + ' and '.join(bad_fields) + '.'
+
+            r = template('gpc_supported', domain=domain, message=message)
             set_headers(r, CACHEABLE_RESPONSE_HEADERS)
             return r
 
@@ -278,7 +292,7 @@ def construct_app(es_dao, **kwargs):
                 message = 'The GPC support resource was not found.'
             elif error in ('client-error', 'server-error', 'unexpected-status'):
                 message = 'Server responded unexpectedly when fetching the GPC support resource.'
-            elif error in ('wrong-content-type', 'parse-error', 'not-json-object',
+            elif error in ('parse-error', 'not-json-object',
                            'invalid-version-field', 'invalid-gpc-field'):
                 message = 'The GPC support resource is invalid.'
             elif error:
