@@ -1,0 +1,195 @@
+:root {
+  --color-bg: #FFF;
+  --color-primary: rgb(0% 53.49% 36.28%); /*lch(50% 66 160.835)*/
+  --color-accent: rgb(21.96% 45.77% 90.66%); /*lch(50% 66 280)*/
+  --color-error: rgb(82.07% 25.69% 26.33%); /*lch(50% 66 30)*/
+  --color-unknown: rgb(75.73% 33.19% 12.24%); /*lch(50% 66 50)*/
+}
+
+* {
+  box-sizing: border-box;
+}
+
+h1, p, input, button {
+  margin: 0;
+  padding: 0;
+}
+input, button {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  border: none;
+}
+
+h1 {
+  margin-top: 30px;
+
+  color: var(--color-primary);
+  text-align: center;
+  font-size: 3em;
+  font-family: 'Roboto Slab', Arial, sans-serif;
+}
+
+a {
+  text-decoration: none;
+}
+a:link,
+a:visited {
+  color: var(--color-accent);
+}
+a:hover {
+  text-decoration: underline;
+}
+
+input,
+button {
+  padding: 10px;
+
+  border: 1px solid #DDD;
+  border-radius: 5px;
+
+  color: #444;
+}
+input {
+  background-color: white;
+  box-shadow: inset 0px 1px 3px #DDD;
+
+  overflow: auto;
+}
+button {
+  background-color: var(--color-bg);
+
+  text-align: center;
+}
+button:hover,
+button:active {
+  background-color: white;
+  color: var(--color-primary);
+
+  cursor: pointer;
+}
+button.mainButton {
+  background-color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+
+  color: white;
+  font-weight: bold;
+}
+button.mainButton:hover,
+button.mainButton:active{
+  background-color: white;
+
+  color: var(--color-primary);
+}
+
+svg.bigIcon {
+  padding: 20px;
+}
+svg.supported {
+  color: var(--color-primary);
+}
+svg.unsupported,
+svg.error {
+  color: var(--color-error);
+}
+svg.unknown {
+  color: var(--color-unknown);
+}
+
+.content {
+  width: 100%;
+}
+.content > * {
+  width: 100%;
+  margin-bottom: 20px;
+}
+.content > *:last-child {
+  margin-bottom: 0px;
+}
+
+.section > * {
+  width: 100%;
+  margin-bottom: 10px;
+}
+.section > *:last-child {
+  margin-bottom: 0;
+}
+
+.content > p,
+.section > p {
+  padding: 10px;
+
+  text-align: center;
+}
+
+.linkRow {
+  display: flex;
+  justify-content: center;
+}
+.linkRow > a {
+  padding: 10px;
+}
+
+.spacer {
+  flex-grow: 1;
+
+  padding: 0;
+  margin: 0;
+}
+
+html {
+  width: 100%;
+  height: 100%;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  min-width: 300px;
+  width: 100%;
+  min-height: 100%;
+  padding: 10px;
+
+  background-color: var(--color-bg);
+
+  color: #444;
+  font-size: 20px;
+  font-family: 'Roboto', Arial, sans-serif;
+}
+
+main {
+  display: inline-flex;
+  flex-direction: column;
+
+  max-width: 100%;
+  width: 300px;
+  padding: 20px;
+
+  border: 1px solid #DDD;
+  border-radius: 5px;
+  box-shadow: 0px 1px 3px #DDD;
+}
+
+/* If we're probably on a mobile device, make the main box fill the screen. */
+@media only screen and (max-width: 450px), only screen and (max-height: 550px) {
+  body {
+    align-items: stretch;
+
+    padding: 0;
+
+    font-size: 22px;
+  }
+  main {
+    flex-grow: 1;
+
+    max-width: unset;
+    width: 100%;
+
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
