@@ -39,6 +39,7 @@ def set_date_range(field, search, date_from, date_to):
 
 
 def apply_filters(s, domain=None, query_string=None,
+                  supports_gpc=None,
                   created_from=None, created_to=None,
                   updated_from=None, updated_to=None,
                   cursor_dt=None, cursor_id=None, cursor_sort=None):
@@ -50,6 +51,9 @@ def apply_filters(s, domain=None, query_string=None,
         s = s.query('simple_query_string',
                     query=query_string,
                     fields=['domain'])
+
+    if supports_gpc is not None:
+        s = s.filter(Q('term', **{'scan_data.supports_gpc': supports_gpc}))
 
     s = set_date_range('create_dt', s, created_from, created_to)
 

@@ -9,7 +9,7 @@ from datetime import timedelta
 from reppy.robots import Robots
 from urllib.parse import urlsplit
 
-from utils.param_parse import ParamParseError, parse_params, string_param
+from utils.param_parse import ParamParseError, parse_params, integer_param, string_param
 
 from .misc import html_default_error_hander, security_headers, set_headers
 
@@ -37,6 +37,8 @@ SCAN_RESULT_HEADERS = {'Cache-Control': f'max-age={SCAN_RESULT_MAX_AGE_SECS}'}
 
 STATIC_FILE_MAX_AGE_SECS = timedelta(hours=1).seconds
 STATIC_FILE_HEADERS = {'Cache-Control': f'max-age={STATIC_FILE_MAX_AGE_SECS}'}
+
+SITES_PAGE_SIZE = 8
 
 SERVER_READY = True
 
@@ -272,6 +274,25 @@ def construct_app(es_dao, **kwargs):
         es_dao.upsert(domain, scan_data, timeout=REQUEST_TIMEOUT)
 
         redirect(f'/sites/{domain}')
+
+    @app.get('/sites/')
+    def get_sites():
+        params = parse_params(request.params.decode(),
+                              page=integer_param('page', default=0, positive=True))
+        page = params['page']
+        offset = page * SITES_PAGE_SIZE
+
+        total, sites = es_dao.find(supports_gpc=True,
+                                   sort=['id'], offset=offset, limit=SITES_PAGE_SIZE, timeout=30)
+        domains = [site[0]['domain'] for site in sites]
+
+        previous_page = page - 1 if page > 0 else None
+        next_page = page + 1
+        next_offset = next_page * SITES_PAGE_SIZE
+        if next_offset >= total:
+            next_page = None
+
+        return template('sites', domains=domains, previous_page=previous_page, next_page=next_page)
 
     @app.get('/sites/<domain>')
     def get_site(domain):

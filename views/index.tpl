@@ -22,6 +22,11 @@ rebase('base.tpl', title='Check a site', open_graph=True,
       % end
       <button class="mainButton">Check Site</button>
     </form>
+    <div class="section">
+      <div class="linkRow">
+        <a href="/sites/">Supporting Sites</a>
+      </div>
+    </div>
   </div>
   <span class="spacer"></span>
 </main>
