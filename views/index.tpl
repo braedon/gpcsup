@@ -5,7 +5,7 @@ rebase('base.tpl', title='Check a site', open_graph=True,
 <main>
   <span class="spacer"></span>
   <div class="content">
-    <h1>GPC SUP</h1>
+    <h1>GPC<br>SUP</h1>
     <div class="section">
       <p>
         Check if a site supports<br>
