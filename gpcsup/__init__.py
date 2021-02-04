@@ -210,6 +210,10 @@ def construct_app(es_dao, **kwargs):
     def root_pngs(filename):
         return static_file(f'{filename}.png', root='static', headers=STATIC_FILE_HEADERS.copy())
 
+    @app.get('/.well-known/gpc.json')
+    def global_privacy_control():
+        return {'gpc': True, 'version': 1}
+
     @app.get('/')
     def index():
         try:
