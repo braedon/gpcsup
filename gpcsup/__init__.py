@@ -30,10 +30,13 @@ BOT_AGENT = 'GpcSupBot'
 HEADERS = {'User-Agent': f'{BOT_AGENT}/0.1 (https://gpcsup.com)'}
 GPC_PATH = '/.well-known/gpc.json'
 
-SCAN_TTL = timedelta(hours=1)
+SCAN_TTL = timedelta(minutes=10)
 
-CACHEABLE_RESPONSE_MAX_AGE_SECS = SCAN_TTL.seconds
-CACHEABLE_RESPONSE_HEADERS = {'Cache-Control': f'max-age={CACHEABLE_RESPONSE_MAX_AGE_SECS}'}
+SCAN_RESULT_MAX_AGE_SECS = SCAN_TTL.seconds
+SCAN_RESULT_HEADERS = {'Cache-Control': f'max-age={SCAN_RESULT_MAX_AGE_SECS}'}
+
+STATIC_FILE_MAX_AGE_SECS = timedelta(hours=1).seconds
+STATIC_FILE_HEADERS = {'Cache-Control': f'max-age={STATIC_FILE_MAX_AGE_SECS}'}
 
 SERVER_READY = True
 
@@ -176,7 +179,7 @@ def construct_app(es_dao, **kwargs):
 
     @app.get('/main.css')
     def css():
-        return static_file('main.css', root='static', headers=CACHEABLE_RESPONSE_HEADERS.copy())
+        return static_file('main.css', root='static', headers=STATIC_FILE_HEADERS.copy())
 
     # Set CORP to allow Firefox for Android to load icons.
     # Firefox for Android seems to consider the icon loader a different origin.
@@ -186,12 +189,12 @@ def construct_app(es_dao, **kwargs):
     @app.get('/favicon.ico',
              sh_updates={'Cross-Origin-Resource-Policy': 'cross-origin'})
     def icon():
-        return static_file('favicon.ico', root='static', headers=CACHEABLE_RESPONSE_HEADERS.copy())
+        return static_file('favicon.ico', root='static', headers=STATIC_FILE_HEADERS.copy())
 
     @app.get('/<filename>.png',
              sh_updates={'Cross-Origin-Resource-Policy': 'cross-origin'})
     def root_pngs(filename):
-        return static_file(f'{filename}.png', root='static', headers=CACHEABLE_RESPONSE_HEADERS.copy())
+        return static_file(f'{filename}.png', root='static', headers=STATIC_FILE_HEADERS.copy())
 
     @app.get('/')
     def index():
@@ -210,7 +213,7 @@ def construct_app(es_dao, **kwargs):
                 domain = None
 
         r = template('index', domain=domain)
-        set_headers(r, CACHEABLE_RESPONSE_HEADERS)
+        set_headers(r, STATIC_FILE_HEADERS)
         return r
 
     @app.post('/')
@@ -280,7 +283,7 @@ def construct_app(es_dao, **kwargs):
                     message = 'incorrect ' + ' and '.join(bad_fields) + '.'
 
             r = template('gpc_supported', domain=domain, message=message)
-            set_headers(r, CACHEABLE_RESPONSE_HEADERS)
+            set_headers(r, SCAN_RESULT_HEADERS)
             return r
 
         else:
@@ -299,7 +302,7 @@ def construct_app(es_dao, **kwargs):
                 log.error('Unsupported GPC scan error %(error)s', {'error': error})
 
             r = template('gpc_unsupported', domain=domain, message=message)
-            set_headers(r, CACHEABLE_RESPONSE_HEADERS)
+            set_headers(r, SCAN_RESULT_HEADERS)
             return r
 
         return site
