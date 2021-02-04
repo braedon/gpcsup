@@ -46,7 +46,7 @@ button {
   padding: 10px;
 
   border: 1px solid #DDD;
-  border-radius: 5px;
+  border-radius: 10px;
 
   color: #444;
 }
@@ -168,8 +168,8 @@ main {
   padding: 20px;
 
   border: 1px solid #DDD;
-  border-radius: 5px;
   box-shadow: 0px 1px 3px #DDD;
+  border-radius: 20px;
 }
 
 /* If we're probably on a mobile device, make the main box fill the screen. */
