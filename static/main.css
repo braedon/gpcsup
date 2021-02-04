@@ -6,7 +6,7 @@
   --color-error: rgb(82.07% 25.69% 26.33%); /*lch(50% 66 30)*/
   --color-unknown: rgb(75.73% 33.19% 12.24%); /*lch(50% 66 50)*/
   --color-border: #DDD;
-  --color-shadow: #DDD;
+  --color-shadow: #0003;
 }
 
 * {
