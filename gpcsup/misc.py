@@ -18,7 +18,6 @@ def set_headers(r, headers):
 
 
 csp_updates = {'img-src': "'self'",
-               'script-src': "'self'",
                'style-src': "'self' https://necolas.github.io https://fonts.googleapis.com",
                'font-src': "https://fonts.gstatic.com",
                'form-action': "'self'"}
