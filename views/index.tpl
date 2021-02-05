@@ -2,11 +2,10 @@
 rebase('base.tpl', title='Check a site', open_graph=True,
        description='Check if a site supports Global Privacy Control.')
 %>
-<main>
-  <span class="spacer"></span>
-  <div class="content">
-    <h1>GPC<br>SUP</h1>
+<div class="content">
+  <main>
     <div class="section">
+      <h1>GPC<br>SUP</h1>
       <p>
         Check if a site supports<br>
         <a href="https://globalprivacycontrol.org" target="_blank" rel="noopener noreferrer">
@@ -22,11 +21,10 @@ rebase('base.tpl', title='Check a site', open_graph=True,
       % end
       <button class="mainButton">Check Site</button>
     </form>
-    <div class="section">
-      <div class="linkRow">
-        <a href="/sites/">Supporting Sites</a>
-      </div>
+  </main>
+  <footer>
+    <div class="linkRow">
+      <a href="/sites/">Supporting Sites</a>
     </div>
-  </div>
-  <span class="spacer"></span>
-</main>
+  </footer>
+</div>

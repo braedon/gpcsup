@@ -38,7 +38,7 @@ SCAN_RESULT_HEADERS = {'Cache-Control': f'max-age={SCAN_RESULT_MAX_AGE_SECS}'}
 STATIC_FILE_MAX_AGE_SECS = timedelta(hours=1).seconds
 STATIC_FILE_HEADERS = {'Cache-Control': f'max-age={STATIC_FILE_MAX_AGE_SECS}'}
 
-SITES_PAGE_SIZE = 8
+SITES_PAGE_SIZE = 10
 
 SERVER_READY = True
 

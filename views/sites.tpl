@@ -2,10 +2,11 @@
 rebase('base.tpl', title='Supporting sites', open_graph=True,
        description='The list of sites that are known to support Global Privacy Control.')
 %>
-<main>
-  <span class="spacer"></span>
-  <div class="content">
+<div class="content">
+  <header>
     <h2>Supporting Sites</h2>
+  </header>
+  <main>
     <div class="section">
       <div class="linkList">
         % for domain in domains:
@@ -13,6 +14,7 @@ rebase('base.tpl', title='Supporting sites', open_graph=True,
         % end
       </div>
     </div>
+    <span class="spacer"></span>
     <div class="section">
       <div class="linkRow">
         % if previous_page is not None:
@@ -35,6 +37,5 @@ rebase('base.tpl', title='Supporting sites', open_graph=True,
         <a href="/">Home</a>
       </div>
     </div>
-  </div>
-  <span class="spacer"></span>
-</main>
+  </main>
+</div>
