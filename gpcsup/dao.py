@@ -33,7 +33,7 @@ def set_date_range(field, search, date_from, date_to):
         date_range['lte'] = rfc3339.datetimetostr(date_to)
 
     if date_range:
-        search = search.filter(Q('range', **{field: date_range}))
+        search = search.filter('range', **{field: date_range})
 
     return search
 
@@ -45,7 +45,7 @@ def apply_filters(s, domain=None, query_string=None,
                   cursor_dt=None, cursor_id=None, cursor_sort=None):
 
     if domain is not None:
-        s = s.filter(Q('ids', values=domain))
+        s = s.filter('ids', values=domain)
 
     if query_string is not None:
         s = s.query('simple_query_string',
@@ -53,7 +53,7 @@ def apply_filters(s, domain=None, query_string=None,
                     fields=['domain'])
 
     if supports_gpc is not None:
-        s = s.filter(Q('term', **{'scan_data.supports_gpc': supports_gpc}))
+        s = s.filter('term', **{'scan_data.supports_gpc': supports_gpc})
 
     s = set_date_range('create_dt', s, created_from, created_to)
 
@@ -126,7 +126,7 @@ class GpcSupDao(object):
                 'lang': 'painless',
                 'params': {
                     'update_dt': now_dts,
-                    'scan_data': scan_data,
+                    'scan_data': scan_data
                 }
             }
         }
