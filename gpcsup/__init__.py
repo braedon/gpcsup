@@ -116,29 +116,34 @@ def scan_gpc(domain):
             for r in resp.history
         ]
 
-    resp_split_url = urlsplit(resp.url)
+    if resp.url != url:
+        data['redirect_url'] = resp.url
 
-    if resp_split_url.scheme != 'https':
-        data['error'] = 'scheme-redirect'
-        return data
+        resp_split_url = urlsplit(resp.url)
 
-    resp_domain = resp_split_url.netloc
-    if ':' in resp_domain:
-        resp_domain = resp_domain.split(':', 1)[0]
-
-    if resp_domain != domain:
-        data['redirect_domain'] = resp_domain
-        if resp_domain.startswith('www.') and resp_domain[4:] == domain:
-            data['www_redirect'] = 'added'
-        elif domain.startswith('www.') and domain[4:] == resp_domain:
-            data['www_redirect'] = 'removed'
-        else:
-            data['error'] = 'domain-redirect'
+        if resp_split_url.scheme not in ('http', 'https'):
+            data['error'] = 'unexpected-scheme-redirect'
             return data
 
-    if resp_split_url.path != GPC_PATH:
-        data['error'] = 'path-redirect'
-        return data
+        if resp_split_url.scheme != 'https':
+            data['warnings'].append('scheme-redirect')
+
+        resp_domain = resp_split_url.netloc
+        if ':' in resp_domain:
+            resp_domain = resp_domain.split(':', 1)[0]
+
+        if resp_domain != domain:
+            data['redirect_domain'] = resp_domain
+
+            if resp_domain.startswith('www.') and resp_domain[4:] == domain:
+                data['www_redirect'] = 'added'
+            elif domain.startswith('www.') and domain[4:] == resp_domain:
+                data['www_redirect'] = 'removed'
+            else:
+                data['warnings'].append('domain-redirect')
+
+        if resp_split_url.path != GPC_PATH:
+            data['warnings'].append('path-redirect')
 
     if resp.status_code == 200:
         pass
@@ -360,8 +365,6 @@ def construct_app(es_dao, testing_mode, **kwargs):
                         bad_fields.append('content type')
                     elif warning == 'invalid-version-field':
                         bad_fields.append('version field')
-                    else:
-                        log.error('Unsupported GPC scan warning %(warning)s', {'warning': warning})
 
                 if bad_fields:
                     message = 'incorrect ' + ' and '.join(bad_fields) + '.'
@@ -373,14 +376,12 @@ def construct_app(es_dao, testing_mode, **kwargs):
         else:
             error = scan_data.get('error')
             message = None
-            if error in ('scheme-redirect', 'domain-redirect', 'path-redirect'):
-                message = 'Server redirected unexpectedly when fetching the GPC support resource.'
-            elif error == 'not-found':
+            if error == 'not-found':
                 message = 'The GPC support resource was not found.'
-            elif error in ('client-error', 'server-error', 'unexpected-status'):
+            elif error in ('unexpected-scheme-redirect', 'client-error', 'server-error',
+                           'unexpected-status'):
                 message = 'Server responded unexpectedly when fetching the GPC support resource.'
-            elif error in ('parse-error', 'not-json-object',
-                           'invalid-version-field', 'invalid-gpc-field'):
+            elif error in ('parse-error', 'not-json-object', 'invalid-gpc-field'):
                 message = 'The GPC support resource is invalid.'
             elif error:
                 log.error('Unsupported GPC scan error %(error)s', {'error': error})
