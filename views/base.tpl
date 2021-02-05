@@ -14,6 +14,7 @@
     %   if defined('description'):
     <meta property="og:description" content="{{description}}">
     %   end
+    <meta property="og:image" content="https://gpcsup.com/logo.png">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="GPC Support">
 
