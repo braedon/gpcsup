@@ -12,6 +12,12 @@ rebase('base.tpl', title='Check a site', open_graph=True,
           Global Privacy Control
         </a>
       </p>
+      <p>
+        Supporting sites are tweeted by
+        <a href="https://twitter.com/gpcsup" target="_blank" rel="noopener noreferrer">
+          @gpcsup
+        </a>
+      </p>
     </div>
     <form class="section" action="/" method="POST">
       % if defined('domain') and domain:

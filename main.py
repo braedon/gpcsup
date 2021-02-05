@@ -15,7 +15,7 @@ from gevent.pool import Pool
 from utils import log_exceptions, nice_shutdown
 from utils.logging import configure_logging, wsgi_log_middleware
 
-from gpcsup import construct_app
+from gpcsup import construct_app, run_twitter_worker
 from gpcsup.dao import GpcSupDao
 
 CONTEXT_SETTINGS = {
@@ -92,7 +92,40 @@ def server(**options):
                    quiet=True, error_log=None)
 
 
+@click.command()
+@click.option('--twitter-consumer-key', required=True,
+              help='Twitter consumer API key.')
+@click.option('--twitter-consumer-secret', required=True,
+              help='Twitter consumer API secret key.')
+@click.option('--twitter-token-key', required=True,
+              help='Twitter access token.')
+@click.option('--twitter-token-secret', required=True,
+              help='Twitter access token secret.')
+@click.option('--es-node', '-e', default=['localhost'], multiple=True,
+              help='Address of a node in a Elasticsearch cluster to use. '
+                   'Specify multiple nodes by providing the option multiple times. '
+                   'A port can be provided if non-standard (9200) e.g. es1:9999. '
+                   '(default: localhost)')
+@click.option('--es-scan-result-index', default='gpcsup-scan',
+              help='Elasticsearch scan result index. (default=gpcsup-scan)')
+@click.option('--json', '-j', default=False, is_flag=True,
+              help='Log in json.')
+@click.option('--verbose', '-v', default=False, is_flag=True,
+              help='Log debug messages.')
+@log_exceptions(exit_on_exception=True)
+def twitter_worker(**options):
+
+    configure_logging(json=options['json'], verbose=options['verbose'])
+
+    es_client = Elasticsearch(options['es_node'], verify_certs=False)
+    es_dao = GpcSupDao(es_client, options['es_scan_result_index'])
+
+    with nice_shutdown():
+        run_twitter_worker(es_dao, **options)
+
+
 main.add_command(server)
+main.add_command(twitter_worker)
 
 
 if __name__ == '__main__':

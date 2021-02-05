@@ -111,7 +111,9 @@ class GpcSupDao(object):
                         'update_dt': now_dts,
                         'scan_data': scan_data,
                     }
-                ]
+                ],
+                'tweeting': False,  # Have we started tweeting about this domain.
+                'tweeted': False    # Have we finished tweeting about this domain.
             },
             # Scripted update if the doc already exists.
             'script': {
@@ -133,6 +135,34 @@ class GpcSupDao(object):
         self.es_client.update(index=self.scan_result_index, id=domain, body=body,
                               request_timeout=timeout, refresh='wait_for' if wait_for else 'false')
 
+    def set_tweeting(self, domain, timeout=30, wait_for=False):
+        body = {
+            'script': {
+                'source': (
+                    'ctx._source.tweeting = true;'
+                ),
+                'lang': 'painless'
+            }
+        }
+        self.es_client.update(index=self.scan_result_index, id=domain, body=body,
+                              request_timeout=timeout, refresh='wait_for' if wait_for else 'false')
+
+    def set_tweeted(self, domain, timeout=30, wait_for=False):
+        now_dts = get_now_dts()
+        body = {
+            'script': {
+                'source': (
+                    'ctx._source.tweeted = true;'
+                    'ctx._source.tweet_dt = params.tweet_dt;'
+                ),
+                'lang': 'painless',
+                'params': {
+                    'tweet_dt': now_dts
+                }
+            }
+        }
+        self.es_client.update(index=self.scan_result_index, id=domain, body=body,
+                              request_timeout=timeout, refresh='wait_for' if wait_for else 'false')
 
     def get(self, domain, timeout=30):
         resp = self.es_client.get(index=self.scan_result_index, id=domain,
@@ -166,3 +196,26 @@ class GpcSupDao(object):
         sites = [(r.to_dict(), r.meta.score) for r in response]
 
         return response.hits.total.value, sites
+
+    def find_tweetable(self, limit=10, timeout=30):
+
+        s = Search(using=self.es_client, index=self.scan_result_index)
+
+        # Only tweet about sites that support GPC.
+        s = s.filter('term', **{'scan_data.supports_gpc': True})
+        # Don't tweet about sites that redirect from/to a www subdomain.
+        # We should tweet about the version that is redirected too instead.
+        s = s.exclude('terms', **{'scan_data.www_redirect': ['added', 'removed']})
+        # Don't tweet about sites we're previously tweeted about (or may have).
+        # We may have set `tweeting` and failed before we could set `tweeted`. In this case, it's
+        # unclear if the tweet went out or not - needs to be checked manually.
+        s = s.exclude('term', **{'tweeting': True})
+        s = s.exclude('term', **{'tweeted': True})
+
+        s = s.sort('update_dt')
+        s = s[:limit]
+        s = s.params(request_timeout=timeout)
+
+        response = s.execute()
+
+        return [r.domain for r in response]
