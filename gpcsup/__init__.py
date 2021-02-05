@@ -211,7 +211,6 @@ def scan_site(domain):
     except reppy.exceptions.ReppyException as e:
         log.warning('Error when fetching robots.txt for %(domain)s: %(error)s',
                     {'domain': domain, 'error': e})
-        raise ScanError('gpc_error')
 
     return scan_gpc(domain)
 
