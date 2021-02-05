@@ -119,11 +119,16 @@ class GpcSupDao(object):
             'script': {
                 'source': (
                     'ctx._source.update_dt = params.update_dt;'
+                    # Only add a history entry if this update changes whether the site supports GPC.
+                    'if (ctx._source.scan_data.supports_gpc != params.scan_data.supports_gpc) {'
+                    '  ctx._source.history.add(['
+                    '    \'update_dt\': params.update_dt,'
+                    '    \'scan_data\': params.scan_data'
+                    '  ]);'
+                    '}'
+                    # Only update the current scan data after checking if we need to add a history
+                    # entry - otherwise we wouldn't be able to check the old scan data.
                     'ctx._source.scan_data = params.scan_data;'
-                    "ctx._source.history.add(["
-                    '  \'update_dt\': params.update_dt,'
-                    '  \'scan_data\': params.scan_data'
-                    ']);'
                 ),
                 'lang': 'painless',
                 'params': {
