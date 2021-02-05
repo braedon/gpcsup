@@ -1,3 +1,4 @@
+import gevent
 import logging
 import re
 import reppy
@@ -28,7 +29,8 @@ log = logging.getLogger(__name__)
 DOMAIN_REGEX = re.compile(r'^(?:[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.)*(?!\d+\.?$)[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.?$')
 DOMAIN_MAX_LENGTH = 253
 
-REQUEST_TIMEOUT = 10
+REQUEST_TIMEOUT_INDIVIDUAL = 10
+REQUEST_TIMEOUT_OVERALL = 30
 BOT_AGENT = 'GpcSupBot'
 HEADERS = {'User-Agent': f'{BOT_AGENT}/0.1 (https://gpcsup.com)'}
 GPC_PATH = '/.well-known/gpc.json'
@@ -44,6 +46,13 @@ STATIC_FILE_HEADERS = {'Cache-Control': f'max-age={STATIC_FILE_MAX_AGE_SECS}'}
 SITES_PAGE_SIZE = 10
 
 SERVER_READY = True
+
+
+class ScanError(Exception):
+    """Indicates the user should be shown the login page"""
+
+    def __init__(self, template):
+        self.template = template
 
 
 # TODO: Handle internationalized domains
@@ -81,7 +90,7 @@ def check_domain(domain):
 
 def scan_gpc(domain):
     url = f'https://{domain}{GPC_PATH}'
-    resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+    resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_INDIVIDUAL)
     data = {
         'url': resp.url,
         'status_code': resp.status_code,
@@ -177,6 +186,23 @@ def scan_gpc(domain):
     return data
 
 
+def scan_site(domain):
+    try:
+        robots = Robots.fetch(f'https://{domain}/robots.txt',
+                              headers=HEADERS,
+                              timeout=REQUEST_TIMEOUT_INDIVIDUAL)
+
+        if not robots.allowed(GPC_PATH, BOT_AGENT):
+            raise ScanError('gpc_blocked')
+
+    except reppy.exceptions.ReppyException as e:
+        log.warning('Error when fetching robots.txt for %(domain)s: %(error)s',
+                    {'domain': domain, 'error': e})
+        raise ScanError('gpc_error')
+
+    return scan_gpc(domain)
+
+
 def construct_app(es_dao, testing_mode, **kwargs):
 
     app = Bottle()
@@ -264,21 +290,19 @@ def construct_app(es_dao, testing_mode, **kwargs):
                     redirect(f'/sites/{domain}')
 
         try:
-            robots = Robots.fetch(f'https://{domain}/robots.txt',
-                                  headers=HEADERS,
-                                  timeout=REQUEST_TIMEOUT)
+            # scan_site() makes multiple requests, each with their own timeouts.
+            # The requests library doesn't always obey its timeout either -
+            # e.g. https://crwdcntrl.net/ seems to take 5-6x the specified timeout.
+            # Use gevent to add a limit to the overall time taken.
+            scan_data = gevent.with_timeout(REQUEST_TIMEOUT_OVERALL, scan_site, domain)
 
-            if not robots.allowed(GPC_PATH, BOT_AGENT):
-                return template('gpc_blocked', domain=domain)
+        except ScanError as e:
+            return template(e.template, domain=domain)
 
-        except reppy.exceptions.ReppyException as e:
-            log.warning('Error when fetching robots.txt for %(domain)s: %(error)s',
-                        {'domain': domain, 'error': e})
+        except gevent.Timeout:
             return template('gpc_error', domain=domain)
 
-        scan_data = scan_gpc(domain)
-
-        es_dao.upsert(domain, scan_data, timeout=REQUEST_TIMEOUT)
+        es_dao.upsert(domain, scan_data, timeout=REQUEST_TIMEOUT_INDIVIDUAL)
 
         redirect(f'/sites/{domain}')
 
