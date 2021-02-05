@@ -90,7 +90,15 @@ def check_domain(domain):
 
 def scan_gpc(domain):
     url = f'https://{domain}{GPC_PATH}'
-    resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_INDIVIDUAL)
+
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_INDIVIDUAL)
+
+    except requests.exceptions.RequestException as e:
+        log.warning('Error when fetching gpc.json for %(domain)s: %(error)s',
+                    {'domain': domain, 'error': e})
+        raise ScanError('gpc_error')
+
     data = {
         'url': resp.url,
         'status_code': resp.status_code,
