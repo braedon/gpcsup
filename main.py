@@ -49,6 +49,8 @@ def main():
 @click.option('--shutdown-wait', default=10,
               help='How many seconds to wait for active connections to close during graceful '
                    'shutdown (after sleeping). (default=10)')
+@click.option('--testing-mode', default=False, is_flag=True,
+              help='Change settings to simplify testing, e.g. ignore scan ttl.')
 @click.option('--json', '-j', default=False, is_flag=True,
               help='Log in json.')
 @click.option('--verbose', '-v', default=False, is_flag=True,

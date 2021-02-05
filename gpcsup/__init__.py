@@ -176,7 +176,7 @@ def scan_gpc(domain):
     return data
 
 
-def construct_app(es_dao, **kwargs):
+def construct_app(es_dao, testing_mode, **kwargs):
 
     app = Bottle()
     app.default_error_handler = html_default_error_hander
@@ -256,7 +256,11 @@ def construct_app(es_dao, **kwargs):
             update_dt = rfc3339.parse_datetime(site['update_dt'])
             # If the last scan hasn't expired yet, don't rescan.
             if rfc3339.now() < update_dt + SCAN_TTL:
-                redirect(f'/sites/{domain}')
+                if testing_mode:
+                    log.info('Would have redirected to existing scan for %(domain)s if on prod.',
+                             {'domain': domain})
+                else:
+                    redirect(f'/sites/{domain}')
 
         try:
             robots = Robots.fetch(f'https://{domain}/robots.txt',
