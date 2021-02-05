@@ -128,17 +128,17 @@ def scan_gpc(domain):
         data['error'] = 'not-found'
         return data
     elif 400 <= resp.status_code < 500:
-        log.warning('Client error when fetching GPC support resource for %{domain}s: %(status_code)s',
+        log.warning('Client error when fetching GPC support resource for %(domain)s: %(status_code)s',
                     {'domain': domain, 'status_code': resp.status_code})
         data['error'] = 'client-error'
         return data
     elif 500 <= resp.status_code < 600:
-        log.warning('Server error when fetching GPC support resource for %{domain}s: %(status_code)s',
+        log.warning('Server error when fetching GPC support resource for %(domain)s: %(status_code)s',
                     {'domain': domain, 'status_code': resp.status_code})
         data['error'] = 'server-error'
         return data
     else:
-        log.warning('Unexpected status when fetching GPC support resource for %{domain}s: %(status_code)s',
+        log.warning('Unexpected status when fetching GPC support resource for %(domain)s: %(status_code)s',
                     {'domain': domain, 'status_code': resp.status_code})
         data['error'] = 'unexpected-status'
         return data
@@ -271,7 +271,7 @@ def construct_app(es_dao, testing_mode, **kwargs):
                 return template('gpc_blocked', domain=domain)
 
         except reppy.exceptions.ReppyException as e:
-            log.warning('Error when fetching robots.txt for %{domain}s: %(error)s',
+            log.warning('Error when fetching robots.txt for %(domain)s: %(error)s',
                         {'domain': domain, 'error': e})
             return template('gpc_error', domain=domain)
 
