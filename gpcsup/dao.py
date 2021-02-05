@@ -133,13 +133,13 @@ class GpcSupDao(object):
         self.es_client.update(index=self.scan_result_index, id=domain, body=body,
                               request_timeout=timeout, refresh='wait_for' if wait_for else 'false')
 
-    def get(self, domain, timeout=30):
-        try:
-            doc = self.es_client.get(index=self.scan_result_index, id=domain,
-                                     request_timeout=timeout)['_source']
-            return doc
 
-        except NotFoundError:
+    def get(self, domain, timeout=30):
+        resp = self.es_client.get(index=self.scan_result_index, id=domain,
+                                  request_timeout=timeout, ignore=404)
+        if resp['found']:
+            return resp['_source']
+        else:
             return None
 
     def find(self,
