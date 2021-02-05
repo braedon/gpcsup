@@ -3,6 +3,7 @@ import re
 import reppy
 import requests
 import rfc3339
+import sys
 import time
 
 from bottle import Bottle, request, response, static_file, template, redirect
@@ -396,3 +397,42 @@ def run_twitter_worker(es_dao,
 
         else:
             time.sleep(60)
+
+
+def run_scan(server, skip, **kwargs):
+    count = 0
+    try:
+        for line in sys.stdin:
+
+            # Skip empty lines
+            line = line.strip()
+            if not line:
+                continue
+
+            domain = normalise_domain(line)
+            if not check_domain(domain):
+                log.warning('Skipping invalid domain %(domain)s.',
+                            {'domain': domain})
+                continue
+
+            if skip > 0:
+                log.debug('Skipping domain %(domain)s.', {'domain': domain})
+                skip -= 1
+                continue
+
+            log.debug('Scanning domain %(domain)s.', {'domain': domain})
+            resp = requests.post(f'https://{server}', data={'domain': domain})
+
+            if resp.status_code != 200:
+                log.error('Unexpected status when scanning domain %(domain)s: %(status_code)s',
+                          {'domain': domain, 'status_code': resp.status_code})
+                break
+
+            log.debug('Scanned domain %(domain)s.', {'domain': domain})
+            count += 1
+
+            if count % 10 == 0:
+                log.info('Scanned %(count)s domains.', {'count': count})
+
+    finally:
+        log.info('Scanned %(count)s domains.', {'count': count})

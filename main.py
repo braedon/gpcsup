@@ -15,7 +15,7 @@ from gevent.pool import Pool
 from utils import log_exceptions, nice_shutdown
 from utils.logging import configure_logging, wsgi_log_middleware
 
-from gpcsup import construct_app, run_twitter_worker
+from gpcsup import construct_app, run_twitter_worker, run_scan
 from gpcsup.dao import GpcSupDao
 
 CONTEXT_SETTINGS = {
@@ -126,8 +126,28 @@ def twitter_worker(**options):
         run_twitter_worker(es_dao, **options)
 
 
+@click.command()
+@click.option('--server', '-s', default='gpcsup.com',
+              help='The domain of the GPC Sup instance to run checks on. '
+                   '(default: gpcsup.com)')
+@click.option('--skip', default=0,
+              help='How many domains to skip from the start of the input (default=0).')
+@click.option('--json', '-j', default=False, is_flag=True,
+              help='Log in json.')
+@click.option('--verbose', '-v', default=False, is_flag=True,
+              help='Log debug messages.')
+@log_exceptions(exit_on_exception=True)
+def scan(**options):
+
+    configure_logging(json=options['json'], verbose=options['verbose'])
+
+    with nice_shutdown():
+        run_scan(**options)
+
+
 main.add_command(server)
 main.add_command(twitter_worker)
+main.add_command(scan)
 
 
 if __name__ == '__main__':
