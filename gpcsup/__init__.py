@@ -228,6 +228,8 @@ def scan_site(domain):
                               timeout=REQUEST_TIMEOUT_INDIVIDUAL)
 
         if not robots.allowed(GPC_PATH, BOT_AGENT):
+            log.info('Scanning blocked by robots.txt for %(domain)s.',
+                     {'domain': domain})
             raise ScanError('gpc_blocked')
 
     except (reppy.exceptions.ReppyException,
