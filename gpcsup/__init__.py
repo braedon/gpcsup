@@ -115,7 +115,7 @@ def scan_gpc(domain):
     # https://quickconnect.to/.well-known/gpc.json redirects to
     # https://.well-known.quickconnect.to/https_first/gpc.json, which has an empty first label in
     # the domain, causing the exception.
-    except (requests.exceptions.RequestException, UnicodeError) as e:
+    except (requests.exceptions.RequestException, urllib3.exceptions.HTTPError, UnicodeError) as e:
         log.warning('Error when fetching gpc.json for %(domain)s: %(error)s',
                     {'domain': domain, 'error': e})
         raise ScanError('gpc_error')
