@@ -172,6 +172,7 @@ def scan_gpc(domain):
         return data
 
     content_type = resp.headers.get('Content-Type')
+    data['content_type'] = content_type
     if content_type:
         content_type = content_type.strip()
         if ';' in content_type:
@@ -179,6 +180,8 @@ def scan_gpc(domain):
 
     if content_type != 'application/json':
         data['warnings'].append('wrong-content-type')
+
+    data['text'] = resp.text[:1000]
 
     try:
         resp_json = resp.json()
@@ -189,8 +192,6 @@ def scan_gpc(domain):
     if not isinstance(resp_json, dict):
         data['error'] = 'not-json-object'
         return data
-
-    data['json'] = resp_json
 
     if resp_json.get('version') != 1:
         data['warnings'].append('invalid-version-field')
