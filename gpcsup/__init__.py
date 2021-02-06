@@ -6,6 +6,7 @@ import requests
 import rfc3339
 import sys
 import time
+import urllib3
 
 from bottle import Bottle, request, response, static_file, template, redirect
 from datetime import timedelta
@@ -94,7 +95,11 @@ def scan_gpc(domain):
     try:
         resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_INDIVIDUAL)
 
-    except requests.exceptions.RequestException as e:
+    # UnicodeError can be raised if the server redirects incorrectly, e.g.
+    # https://quickconnect.to/.well-known/gpc.json redirects to
+    # https://.well-known.quickconnect.to/https_first/gpc.json, which has an empty first label in
+    # the domain, causing the exception.
+    except (requests.exceptions.RequestException, UnicodeError) as e:
         log.warning('Error when fetching gpc.json for %(domain)s: %(error)s',
                     {'domain': domain, 'error': e})
         raise ScanError('gpc_error')
@@ -208,7 +213,8 @@ def scan_site(domain):
         if not robots.allowed(GPC_PATH, BOT_AGENT):
             raise ScanError('gpc_blocked')
 
-    except reppy.exceptions.ReppyException as e:
+    except (reppy.exceptions.ReppyException,
+            urllib3.exceptions.HTTPError) as e:
         log.warning('Error when fetching robots.txt for %(domain)s: %(error)s',
                     {'domain': domain, 'error': e})
 
