@@ -377,7 +377,24 @@ def construct_app(es_dao, testing_mode, **kwargs):
         if scan_data.get('www_redirect'):
             domain = scan_data['redirect_domain']
 
-        if scan_data['supports_gpc']:
+        error = scan_data.get('error')
+        if error:
+            message = None
+            if error == 'not-found':
+                message = 'The GPC support resource was not found.'
+            elif error in ('unexpected-scheme-redirect', 'client-error', 'server-error',
+                           'unexpected-status'):
+                message = 'Server responded unexpectedly when fetching the GPC support resource.'
+            elif error in ('parse-error', 'not-json-object', 'invalid-gpc-field'):
+                message = 'The GPC support resource is invalid.'
+            elif error:
+                log.error('Unsupported GPC scan error %(error)s', {'error': error})
+
+            r = template('gpc_unknown', domain=domain, message=message)
+            set_headers(r, SCAN_RESULT_HEADERS)
+            return r
+
+        else:
             warnings = scan_data.get('warnings')
             message = None
             if warnings:
@@ -391,28 +408,10 @@ def construct_app(es_dao, testing_mode, **kwargs):
                 if bad_fields:
                     message = 'incorrect ' + ' and '.join(bad_fields) + '.'
 
-            r = template('gpc_supported', domain=domain, message=message)
+            template_name = 'gpc_supported' if scan_data['supports_gpc'] else 'gpc_unsupported'
+            r = template(template_name, domain=domain, message=message)
             set_headers(r, SCAN_RESULT_HEADERS)
             return r
-
-        else:
-            error = scan_data.get('error')
-            message = None
-            if error == 'not-found':
-                message = 'The GPC support resource was not found.'
-            elif error in ('unexpected-scheme-redirect', 'client-error', 'server-error',
-                           'unexpected-status'):
-                message = 'Server responded unexpectedly when fetching the GPC support resource.'
-            elif error in ('parse-error', 'not-json-object', 'invalid-gpc-field'):
-                message = 'The GPC support resource is invalid.'
-            elif error:
-                log.error('Unsupported GPC scan error %(error)s', {'error': error})
-
-            r = template('gpc_unsupported', domain=domain, message=message)
-            set_headers(r, SCAN_RESULT_HEADERS)
-            return r
-
-        return site
 
     return app
 

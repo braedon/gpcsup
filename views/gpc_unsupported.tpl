@@ -9,17 +9,20 @@ rebase('base.tpl', title=f'GPC not supported by {domain}', open_graph=True,
         <path d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <p>
+        <a href="https://{{domain}}" target="_blank" rel="noopener noreferrer">
+          {{domain}}
+        </a><br>
+        reports that it does not support<br>
         <a href="https://globalprivacycontrol.org" target="_blank" rel="noopener noreferrer">
           Global Privacy Control
-        </a><br>
-        is not supported by<br>
-        <a href="https://{{domain}}"
-           target="_blank" rel="noopener noreferrer">
-          {{domain}}
         </a>
       </p>
       % if defined('message') and message:
       <p>
+        However, its GPC support resource doesn't follow the
+        <a href="https://globalprivacycontrol.github.io/gpc-spec/#gpc-support-resource"
+           target="_blank" rel="noopener noreferrer">spec</a>
+        exactly -
         {{message}}
       </p>
       % end

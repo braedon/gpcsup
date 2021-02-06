@@ -9,17 +9,17 @@ rebase('base.tpl', title=f'GPC supported by {domain}', open_graph=True,
         <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <p>
-        <a href="https://globalprivacycontrol.org" target="_blank" rel="noopener noreferrer">
-          Global Privacy Control
-        </a><br>
-        is supported by<br>
         <a href="https://{{domain}}" target="_blank" rel="noopener noreferrer">
           {{domain}}
+        </a><br>
+        reports that it supports<br>
+        <a href="https://globalprivacycontrol.org" target="_blank" rel="noopener noreferrer">
+          Global Privacy Control
         </a>
       </p>
       % if defined('message') and message:
       <p>
-        However, the GPC support resource doesn't follow the
+        However, its GPC support resource doesn't follow the
         <a href="https://globalprivacycontrol.github.io/gpc-spec/#gpc-support-resource"
            target="_blank" rel="noopener noreferrer">spec</a>
         exactly -
