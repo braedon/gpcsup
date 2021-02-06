@@ -1,4 +1,5 @@
 import gevent
+import idna
 import logging
 import re
 import reppy
@@ -56,7 +57,6 @@ class ScanError(Exception):
         self.template = template
 
 
-# TODO: Handle internationalized domains
 def normalise_domain(domain):
     domain = domain.lower()
 
@@ -75,14 +75,30 @@ def normalise_domain(domain):
     if domain.endswith('.'):
         domain = domain[:-1]
 
+    try:
+        # Convert to and from IDNA encoding with compatibility mapping enabled to normalise.
+        domain = idna.decode(idna.encode(domain, uts46=True))
+    except idna.IDNAError:
+        # Ignore IDNA errors and return the domain without IDNA normalisation.
+        # Any IDNA error will cause check_domain() to fail anyway.
+        pass
+
     return domain
 
 
 def check_domain(domain):
-    if len(domain) > DOMAIN_MAX_LENGTH:
+    try:
+        # Convert domains to IDNA format before checking length and format.
+        idna_domain = idna.encode(domain).decode('ASCII')
+    except idna.IDNAError as e:
+        log.warning('IDNA error when checking %(domain)s: %(error)s',
+                    {'domain': domain, 'error': e})
         return False
 
-    match = DOMAIN_REGEX.fullmatch(domain)
+    if len(idna_domain) > DOMAIN_MAX_LENGTH:
+        return False
+
+    match = DOMAIN_REGEX.fullmatch(idna_domain)
     if match is None:
         return False
 
