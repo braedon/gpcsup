@@ -56,8 +56,9 @@ SERVER_READY = True
 class ScanError(Exception):
     """Indicates the user should be shown the login page"""
 
-    def __init__(self, template):
+    def __init__(self, template, **kwargs):
         self.template = template
+        self.kwargs = kwargs
 
 
 def normalise_domain(domain):
@@ -108,13 +109,14 @@ def check_domain(domain):
     return True
 
 
-def scan_gpc(domain):
-    url = f'https://{domain}{GPC_PATH}'
+def scan_gpc(domain, scheme='https'):
+    url = f'{scheme}://{domain}{GPC_PATH}'
 
     try:
         with requests.get(url, headers=HEADERS,
                           timeout=REQUEST_TIMEOUT_INDIVIDUAL, stream=True) as resp:
             data = {
+                'scheme': scheme,
                 'url': resp.url,
                 'status_code': resp.status_code,
                 'supports_gpc': False,
@@ -136,11 +138,12 @@ def scan_gpc(domain):
 
                 resp_split_url = urlsplit(resp.url)
 
-                if resp_split_url.scheme not in ('http', 'https'):
+                resp_scheme = resp_split_url.scheme
+                if resp_scheme not in ('http', 'https'):
                     data['error'] = 'unexpected-scheme-redirect'
                     return data
-
-                if resp_split_url.scheme != 'https':
+                if resp_scheme != scheme:
+                    data['redirect_scheme'] = resp_scheme
                     data['warnings'].append('scheme-redirect')
 
                 resp_domain = resp_split_url.netloc
@@ -251,9 +254,9 @@ def scan_gpc(domain):
     return data
 
 
-def scan_site(domain):
+def scan_site(domain, scheme='https'):
     try:
-        robots = Robots.fetch(f'https://{domain}/robots.txt',
+        robots = Robots.fetch(f'{scheme}://{domain}/robots.txt',
                               max_size=MAX_ROBOTS_CONTACT_LENGTH,
                               headers=HEADERS,
                               timeout=REQUEST_TIMEOUT_INDIVIDUAL)
@@ -261,14 +264,26 @@ def scan_site(domain):
         if not robots.allowed(GPC_PATH, BOT_AGENT):
             log.info('Scanning blocked by robots.txt for %(domain)s.',
                      {'domain': domain})
-            raise ScanError('gpc_blocked')
+            raise ScanError('gpc_blocked', scheme=scheme)
 
     except (reppy.exceptions.ReppyException,
             urllib3.exceptions.HTTPError) as e:
         log.warning('Error when fetching robots.txt for %(domain)s: %(error)s',
                     {'domain': domain, 'error': e})
 
-    return scan_gpc(domain)
+    return scan_gpc(domain, scheme=scheme)
+
+
+def scan_site_cross_scheme(domain):
+    try:
+        return scan_site(domain, scheme='https')
+
+    except ScanError as e:
+        if e.template == 'gpc_error':
+            # HTTPS failed - try again with HTTP
+            return scan_site(domain, scheme='http')
+        else:
+            raise
 
 
 def construct_app(es_dao, testing_mode, **kwargs):
@@ -362,10 +377,10 @@ def construct_app(es_dao, testing_mode, **kwargs):
             # The requests library doesn't always obey its timeout either -
             # e.g. https://crwdcntrl.net/ seems to take 5-6x the specified timeout.
             # Use gevent to add a limit to the overall time taken.
-            scan_data = gevent.with_timeout(REQUEST_TIMEOUT_OVERALL, scan_site, domain)
+            scan_data = gevent.with_timeout(REQUEST_TIMEOUT_OVERALL, scan_site_cross_scheme, domain)
 
         except ScanError as e:
-            return template(e.template, domain=domain)
+            return template(e.template, domain=domain, **e.kwargs)
 
         except gevent.Timeout:
             return template('gpc_error', domain=domain)
@@ -405,6 +420,9 @@ def construct_app(es_dao, testing_mode, **kwargs):
 
         scan_data = site['scan_data']
 
+        # Older scans were all HTTPS, so didn't record the scheme.
+        scheme = scan_data.get('scheme') or 'https'
+
         # If the site redirected to (or from) a www subdomain during the scan, show the user the
         # redirected domain instead of the original - presumably that's the one they should use.
         if scan_data.get('www_redirect'):
@@ -424,7 +442,7 @@ def construct_app(es_dao, testing_mode, **kwargs):
             elif error:
                 log.error('Unsupported GPC scan error %(error)s', {'error': error})
 
-            r = template('gpc_unknown', domain=domain, message=message)
+            r = template('gpc_unknown', scheme=scheme, domain=domain, message=message)
             set_headers(r, SCAN_RESULT_HEADERS)
             return r
 
@@ -443,7 +461,7 @@ def construct_app(es_dao, testing_mode, **kwargs):
                     message = 'incorrect ' + ' and '.join(bad_fields) + '.'
 
             template_name = 'gpc_supported' if scan_data['supports_gpc'] else 'gpc_unsupported'
-            r = template(template_name, domain=domain, message=message)
+            r = template(template_name, scheme=scheme, domain=domain, message=message)
             set_headers(r, SCAN_RESULT_HEADERS)
             return r
 

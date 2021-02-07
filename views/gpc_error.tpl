@@ -7,12 +7,10 @@
       </svg>
       <p>
         We couldn't check<br>
-        <a href="https://{{domain}}" target="_blank" rel="noopener noreferrer">
-          {{domain}}
-        </a>
+        {{domain}}
       </p>
       <p>
-        Are you sure the domain is correct, and supports HTTPS?
+        Are you sure the domain is correct?
       </p>
     </div>
   </main>

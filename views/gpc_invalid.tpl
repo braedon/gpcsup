@@ -7,9 +7,7 @@
       </svg>
       <p>
         % if defined('domain') and domain:
-        <a href="https://{{domain}}" target="_blank" rel="noopener noreferrer">
-          {{domain}}
-        </a><br>
+        {{domain}}<br>
         % else:
         That
         % end
