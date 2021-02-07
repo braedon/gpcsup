@@ -1,5 +1,6 @@
 import gevent
 import idna
+import json
 import logging
 import re
 import reppy
@@ -35,7 +36,9 @@ REQUEST_TIMEOUT_INDIVIDUAL = 10
 REQUEST_TIMEOUT_OVERALL = 30
 BOT_AGENT = 'GpcSupBot'
 HEADERS = {'User-Agent': f'{BOT_AGENT}/0.1 (https://gpcsup.com)'}
+MAX_ROBOTS_CONTACT_LENGTH = 512 * 1024  # 512kB
 GPC_PATH = '/.well-known/gpc.json'
+MAX_CONTENT_LENGTH = 1024  # 1kB
 
 SCAN_TTL = timedelta(minutes=10)
 
@@ -109,7 +112,113 @@ def scan_gpc(domain):
     url = f'https://{domain}{GPC_PATH}'
 
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_INDIVIDUAL)
+        with requests.get(url, headers=HEADERS,
+                          timeout=REQUEST_TIMEOUT_INDIVIDUAL, stream=True) as resp:
+            data = {
+                'url': resp.url,
+                'status_code': resp.status_code,
+                'supports_gpc': False,
+                'warnings': [],
+            }
+
+            if resp.history:
+                data['redirects'] = [
+                    {
+                        'url': r.url,
+                        'status_code': r.status_code,
+                        'location': r.headers.get('Location'),
+                    }
+                    for r in resp.history
+                ]
+
+            if resp.url != url:
+                data['redirect_url'] = resp.url
+
+                resp_split_url = urlsplit(resp.url)
+
+                if resp_split_url.scheme not in ('http', 'https'):
+                    data['error'] = 'unexpected-scheme-redirect'
+                    return data
+
+                if resp_split_url.scheme != 'https':
+                    data['warnings'].append('scheme-redirect')
+
+                resp_domain = resp_split_url.netloc
+                if ':' in resp_domain:
+                    resp_domain = resp_domain.split(':', 1)[0]
+
+                if resp_domain != domain:
+                    data['redirect_domain'] = resp_domain
+
+                    if resp_domain.startswith('www.') and resp_domain[4:] == domain:
+                        data['www_redirect'] = 'added'
+                    elif domain.startswith('www.') and domain[4:] == resp_domain:
+                        data['www_redirect'] = 'removed'
+                    else:
+                        data['warnings'].append('domain-redirect')
+
+                if resp_split_url.path != GPC_PATH:
+                    data['warnings'].append('path-redirect')
+
+            if resp.status_code == 200:
+                pass
+            elif resp.status_code == 404:
+                data['error'] = 'not-found'
+                return data
+            elif 400 <= resp.status_code < 500:
+                log.warning('Client error when fetching GPC support resource for %(domain)s: %(status_code)s',
+                            {'domain': domain, 'status_code': resp.status_code})
+                data['error'] = 'client-error'
+                return data
+            elif 500 <= resp.status_code < 600:
+                log.warning('Server error when fetching GPC support resource for %(domain)s: %(status_code)s',
+                            {'domain': domain, 'status_code': resp.status_code})
+                data['error'] = 'server-error'
+                return data
+            else:
+                log.warning('Unexpected status when fetching GPC support resource for %(domain)s: %(status_code)s',
+                            {'domain': domain, 'status_code': resp.status_code})
+                data['error'] = 'unexpected-status'
+                return data
+
+            content_type = resp.headers.get('Content-Type')
+            data['content_type'] = content_type
+            if content_type:
+                content_type = content_type.strip()
+                if ';' in content_type:
+                    content_type = content_type.split(';', 1)[0].strip()
+
+            if content_type != 'application/json':
+                data['warnings'].append('wrong-content-type')
+
+            content_length = resp.headers.get('Content-Length')
+            data['content_length'] = content_length
+            try:
+                if content_length and int(content_length) > MAX_CONTENT_LENGTH:
+                    data['error'] = 'content-length-too-long'
+                    return data
+
+            except ValueError:
+                # If the Content-Length header isn't valid, we'll check the length ourselves.
+                pass
+
+            # Read up to MAX_CONTENT_LENGTH bytes of content.
+            content = resp.raw.read(amt=MAX_CONTENT_LENGTH, decode_content=True)
+            # Read up to 1kB to check if the content is longer than MAX_CONTENT_LENGTH.
+            # Reading with decode_content on could produce `b''` even if bytes have been read if the
+            # stream is compressed. Reading a 1kB chunk makes this less likely. See:
+            # https://github.com/urllib3/urllib3/issues/437
+            extra_content = resp.raw.read(amt=1024, decode_content=True)
+            if extra_content:
+                data['error'] = 'content-too-long'
+                return data
+
+            if resp.encoding:
+                data['text'] = content.decode(resp.encoding)
+            else:
+                data['warnings'].append('unknown encoding')
+
+            # We've read the content, so safe to close the connection.
 
     # UnicodeError can be raised if the server redirects incorrectly, e.g.
     # https://quickconnect.to/.well-known/gpc.json redirects to
@@ -120,87 +229,8 @@ def scan_gpc(domain):
                     {'domain': domain, 'error': e})
         raise ScanError('gpc_error')
 
-    data = {
-        'url': resp.url,
-        'status_code': resp.status_code,
-        'supports_gpc': False,
-        'warnings': [],
-    }
-
-    if resp.history:
-        data['redirects'] = [
-            {
-                'url': r.url,
-                'status_code': r.status_code,
-                'location': r.headers.get('Location'),
-            }
-            for r in resp.history
-        ]
-
-    if resp.url != url:
-        data['redirect_url'] = resp.url
-
-        resp_split_url = urlsplit(resp.url)
-
-        if resp_split_url.scheme not in ('http', 'https'):
-            data['error'] = 'unexpected-scheme-redirect'
-            return data
-
-        if resp_split_url.scheme != 'https':
-            data['warnings'].append('scheme-redirect')
-
-        resp_domain = resp_split_url.netloc
-        if ':' in resp_domain:
-            resp_domain = resp_domain.split(':', 1)[0]
-
-        if resp_domain != domain:
-            data['redirect_domain'] = resp_domain
-
-            if resp_domain.startswith('www.') and resp_domain[4:] == domain:
-                data['www_redirect'] = 'added'
-            elif domain.startswith('www.') and domain[4:] == resp_domain:
-                data['www_redirect'] = 'removed'
-            else:
-                data['warnings'].append('domain-redirect')
-
-        if resp_split_url.path != GPC_PATH:
-            data['warnings'].append('path-redirect')
-
-    if resp.status_code == 200:
-        pass
-    elif resp.status_code == 404:
-        data['error'] = 'not-found'
-        return data
-    elif 400 <= resp.status_code < 500:
-        log.warning('Client error when fetching GPC support resource for %(domain)s: %(status_code)s',
-                    {'domain': domain, 'status_code': resp.status_code})
-        data['error'] = 'client-error'
-        return data
-    elif 500 <= resp.status_code < 600:
-        log.warning('Server error when fetching GPC support resource for %(domain)s: %(status_code)s',
-                    {'domain': domain, 'status_code': resp.status_code})
-        data['error'] = 'server-error'
-        return data
-    else:
-        log.warning('Unexpected status when fetching GPC support resource for %(domain)s: %(status_code)s',
-                    {'domain': domain, 'status_code': resp.status_code})
-        data['error'] = 'unexpected-status'
-        return data
-
-    content_type = resp.headers.get('Content-Type')
-    data['content_type'] = content_type
-    if content_type:
-        content_type = content_type.strip()
-        if ';' in content_type:
-            content_type = content_type.split(';', 1)[0].strip()
-
-    if content_type != 'application/json':
-        data['warnings'].append('wrong-content-type')
-
-    data['text'] = resp.text[:1000]
-
     try:
-        resp_json = resp.json()
+        resp_json = json.loads(content)
     except ValueError:
         data['error'] = 'parse-error'
         return data
@@ -224,6 +254,7 @@ def scan_gpc(domain):
 def scan_site(domain):
     try:
         robots = Robots.fetch(f'https://{domain}/robots.txt',
+                              max_size=MAX_ROBOTS_CONTACT_LENGTH,
                               headers=HEADERS,
                               timeout=REQUEST_TIMEOUT_INDIVIDUAL)
 
@@ -387,7 +418,8 @@ def construct_app(es_dao, testing_mode, **kwargs):
             elif error in ('unexpected-scheme-redirect', 'client-error', 'server-error',
                            'unexpected-status'):
                 message = 'Server responded unexpectedly when fetching the GPC support resource.'
-            elif error in ('parse-error', 'not-json-object', 'invalid-gpc-field'):
+            elif error in ('parse-error', 'not-json-object', 'invalid-gpc-field',
+                           'content-too-long', 'content-length-too-long'):
                 message = 'The GPC support resource is invalid.'
             elif error:
                 log.error('Unsupported GPC scan error %(error)s', {'error': error})
