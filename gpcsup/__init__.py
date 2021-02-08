@@ -10,7 +10,7 @@ import sys
 import time
 import urllib3
 
-from bottle import Bottle, request, response, static_file, template, redirect
+from bottle import Bottle, abort, request, response, static_file, template, redirect
 from datetime import timedelta
 from gevent.pool import Pool
 from reppy.robots import Robots
@@ -34,12 +34,15 @@ DOMAIN_REGEX = re.compile(r'^(?:[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.)*(?!\d+\.?$)
 DOMAIN_MAX_LENGTH = 253
 
 REQUEST_TIMEOUT_INDIVIDUAL = 10
-REQUEST_TIMEOUT_OVERALL = 30
-BOT_AGENT = 'GpcSupBot'
-HEADERS = {'User-Agent': f'{BOT_AGENT}/0.1 (https://gpcsup.com)'}
-MAX_ROBOTS_CONTACT_LENGTH = 512 * 1024  # 512kB
+
+SCAN_MAX_PARALLEL = 10
+SCAN_START_TIMEOUT = 20
+SCAN_TIMEOUT = 30
+SCAN_AGENT = 'GpcSupBot'
+SCAN_HEADERS = {'User-Agent': f'{SCAN_AGENT}/0.1 (https://gpcsup.com)'}
+ROBOTS_MAX_CONTENT_LENGTH = 512 * 1024  # 512kB
 GPC_PATH = '/.well-known/gpc.json'
-MAX_CONTENT_LENGTH = 1024  # 1kB
+GPC_MAX_CONTENT_LENGTH = 1024  # 1kB
 
 SCAN_TTL = timedelta(minutes=10)
 
@@ -114,7 +117,7 @@ def scan_gpc(domain, scheme='https'):
     url = f'{scheme}://{domain}{GPC_PATH}'
 
     try:
-        with requests.get(url, headers=HEADERS,
+        with requests.get(url, headers=SCAN_HEADERS,
                           timeout=REQUEST_TIMEOUT_INDIVIDUAL, stream=True) as resp:
             data = {
                 'scheme': scheme,
@@ -198,7 +201,7 @@ def scan_gpc(domain, scheme='https'):
             content_length = resp.headers.get('Content-Length')
             data['content_length'] = content_length
             try:
-                if content_length and int(content_length) > MAX_CONTENT_LENGTH:
+                if content_length and int(content_length) > GPC_MAX_CONTENT_LENGTH:
                     data['error'] = 'content-length-too-long'
                     return data
 
@@ -206,9 +209,9 @@ def scan_gpc(domain, scheme='https'):
                 # If the Content-Length header isn't valid, we'll check the length ourselves.
                 pass
 
-            # Read up to MAX_CONTENT_LENGTH bytes of content.
-            content = resp.raw.read(amt=MAX_CONTENT_LENGTH, decode_content=True)
-            # Read up to 1kB to check if the content is longer than MAX_CONTENT_LENGTH.
+            # Read up to GPC_MAX_CONTENT_LENGTH bytes of content.
+            content = resp.raw.read(amt=GPC_MAX_CONTENT_LENGTH, decode_content=True)
+            # Read up to 1kB to check if the content is longer than GPC_MAX_CONTENT_LENGTH.
             # Reading with decode_content on could produce `b''` even if bytes have been read if the
             # stream is compressed. Reading a 1kB chunk makes this less likely. See:
             # https://github.com/urllib3/urllib3/issues/437
@@ -261,11 +264,11 @@ def scan_gpc(domain, scheme='https'):
 def scan_site(domain, scheme='https'):
     try:
         robots = Robots.fetch(f'{scheme}://{domain}/robots.txt',
-                              max_size=MAX_ROBOTS_CONTACT_LENGTH,
-                              headers=HEADERS,
+                              max_size=ROBOTS_MAX_CONTENT_LENGTH,
+                              headers=SCAN_HEADERS,
                               timeout=REQUEST_TIMEOUT_INDIVIDUAL)
 
-        if not robots.allowed(GPC_PATH, BOT_AGENT):
+        if not robots.allowed(GPC_PATH, SCAN_AGENT):
             log.info('Scanning blocked by robots.txt for %(domain)s.',
                      {'domain': domain})
             raise ScanError('gpc_blocked', scheme=scheme)
@@ -296,6 +299,9 @@ def construct_app(es_dao, testing_mode, **kwargs):
     app.default_error_handler = html_default_error_hander
 
     app.install(security_headers)
+
+    # Scans are run in a limited size pool to avoid flooding a process with a lot of parallel scans.
+    scan_pool = Pool(SCAN_MAX_PARALLEL)
 
     @app.get('/-/live')
     def live():
@@ -376,12 +382,19 @@ def construct_app(es_dao, testing_mode, **kwargs):
                 else:
                     redirect(f'/sites/{domain}')
 
+        # Need to wait for a slot to be available in the scan pool.
+        slots = scan_pool.wait_available(SCAN_START_TIMEOUT)
+        if slots < 1:
+            # Server is overloaded - caller needs to try again later.
+            abort(503)
+
         try:
-            # scan_site() makes multiple requests, each with their own timeouts.
+            # A scan makes multiple requests, each with their own timeouts.
             # The requests library doesn't always obey its timeout either -
             # e.g. https://crwdcntrl.net/ seems to take 5-6x the specified timeout.
-            # Use gevent to add a limit to the overall time taken.
-            scan_data = gevent.with_timeout(REQUEST_TIMEOUT_OVERALL, scan_site_cross_scheme, domain)
+            # Perform the whole scan in a greenlet so we can use a timeout on the whole thing.
+            gl = scan_pool.spawn(scan_site_cross_scheme, domain)
+            scan_data = gl.get(block=True, timeout=SCAN_TIMEOUT)
 
         except ScanError as e:
             return template(e.template, domain=domain, **e.kwargs)
