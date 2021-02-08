@@ -402,7 +402,7 @@ def construct_app(es_dao, testing_mode, **kwargs):
         except gevent.Timeout:
             return template('gpc_error', domain=domain)
 
-        es_dao.upsert(domain, scan_data, timeout=REQUEST_TIMEOUT_INDIVIDUAL)
+        es_dao.upsert(domain, scan_data, timeout=30)
 
         redirect(f'/sites/{domain}')
 
