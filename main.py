@@ -130,6 +130,8 @@ def twitter_worker(**options):
 @click.option('--server', '-s', default='gpcsup.com',
               help='The domain of the GPC Sup instance to run checks on. '
                    '(default: gpcsup.com)')
+@click.option('--parallel-scans', '-p', default=10,
+              help='How many domains scan in parallel (default=10).')
 @click.option('--skip', default=0,
               help='How many domains to skip from the start of the input (default=0).')
 @click.option('--json', '-j', default=False, is_flag=True,

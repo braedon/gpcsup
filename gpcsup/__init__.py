@@ -12,6 +12,7 @@ import urllib3
 
 from bottle import Bottle, request, response, static_file, template, redirect
 from datetime import timedelta
+from gevent.pool import Pool
 from reppy.robots import Robots
 from requests_oauthlib import OAuth1
 from urllib.parse import urlsplit
@@ -508,8 +509,39 @@ def run_twitter_worker(es_dao,
             time.sleep(60)
 
 
-def run_scan(server, skip, **kwargs):
+def run_scan(server, parallel_scans, skip, **kwargs):
+    gevent_pool = Pool(parallel_scans)
+
     count = 0
+    start_s = time.monotonic()
+    block_start_s = time.monotonic()
+    block_size = 100
+
+    def scan_domain(domain):
+        log.debug('Scanning domain %(domain)s.', {'domain': domain})
+        # Don't follow redirects on successful scan to avoid unnecesary load on the server.
+        resp = requests.post(f'https://{server}', data={'domain': domain},
+                             allow_redirects=False)
+
+        # 200 if the domain couldn't be scanned, 303 for redirects to scan results.
+        if resp.status_code not in (200, 303):
+            log.error('Unexpected status when scanning domain %(domain)s: %(status_code)s',
+                      {'domain': domain, 'status_code': resp.status_code})
+            raise SystemExit('Unexpected status, aborting.')
+
+        log.debug('Scanned domain %(domain)s.', {'domain': domain})
+
+        nonlocal count, block_start_s
+        count += 1
+        if count % block_size == 0:
+            block_end_s = time.monotonic()
+            rate = block_size / (block_end_s - block_start_s)
+            log.info('Scanned %(count)s domains. Rate %(rate).2f/s',
+                     {'count': count, 'rate': rate})
+            block_start_s = block_end_s
+
+        return True
+
     try:
         for line in sys.stdin:
 
@@ -529,19 +561,8 @@ def run_scan(server, skip, **kwargs):
                 skip -= 1
                 continue
 
-            log.debug('Scanning domain %(domain)s.', {'domain': domain})
-            resp = requests.post(f'https://{server}', data={'domain': domain})
-
-            if resp.status_code != 200:
-                log.error('Unexpected status when scanning domain %(domain)s: %(status_code)s',
-                          {'domain': domain, 'status_code': resp.status_code})
-                break
-
-            log.debug('Scanned domain %(domain)s.', {'domain': domain})
-            count += 1
-
-            if count % 10 == 0:
-                log.info('Scanned %(count)s domains.', {'count': count})
+            gevent_pool.spawn(scan_domain, domain)
 
     finally:
-        log.info('Scanned %(count)s domains.', {'count': count})
+        rate = count / (time.monotonic() - start_s)
+        log.info('Scanned %(count)s domains. Rate %(rate).2f/s', {'count': count, 'rate': rate})
