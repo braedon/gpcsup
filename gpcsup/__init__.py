@@ -33,7 +33,7 @@ log = logging.getLogger(__name__)
 DOMAIN_REGEX = re.compile(r'^(?:[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.)*(?!\d+\.?$)[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.?$')
 DOMAIN_MAX_LENGTH = 253
 
-REQUEST_TIMEOUT_INDIVIDUAL = 10
+REQUEST_TIMEOUT_INDIVIDUAL = 5
 
 SCAN_MAX_PARALLEL = 10
 SCAN_START_TIMEOUT = 20
