@@ -217,9 +217,12 @@ def scan_gpc(domain, scheme='https'):
                 return data
 
             if resp.encoding:
-                data['text'] = content.decode(resp.encoding)
+                try:
+                    data['text'] = content.decode(resp.encoding)
+                except LookupError:
+                    data['warnings'].append('encoding-unsupported')
             else:
-                data['warnings'].append('unknown encoding')
+                data['warnings'].append('encoding-unknown')
 
             # We've read the content, so safe to close the connection.
 
