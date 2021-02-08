@@ -1,5 +1,6 @@
 <%
-rebase('base.tpl', title=f'GPC supported by {domain}', open_graph=True,
+rebase('base.tpl', title=f'GPC supported by {domain}',
+       open_graph=True, open_graph_image='gpc_supported.png',
        description=f'Global Privacy Control is supported by {domain}.')
 %>
 <div class="content">

@@ -14,7 +14,11 @@
     %   if defined('description'):
     <meta property="og:description" content="{{description}}">
     %   end
+    % if defined('open_graph_image') and open_graph_image:
+    <meta property="og:image" content="https://gpcsup.com/{{open_graph_image}}">
+    % else:
     <meta property="og:image" content="https://gpcsup.com/logo.png">
+    % end
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="GPC Support">
 
