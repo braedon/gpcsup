@@ -46,9 +46,9 @@ def main():
               help='Port to serve on (default=8080).')
 @click.option('--shutdown-sleep', default=10,
               help='How many seconds to sleep during graceful shutdown. (default=10)')
-@click.option('--shutdown-wait', default=10,
+@click.option('--shutdown-wait', default=30,
               help='How many seconds to wait for active connections to close during graceful '
-                   'shutdown (after sleeping). (default=10)')
+                   'shutdown (after sleeping). (default=30)')
 @click.option('--testing-mode', default=False, is_flag=True,
               help='Change settings to simplify testing, e.g. ignore scan ttl.')
 @click.option('--json', '-j', default=False, is_flag=True,
