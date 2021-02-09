@@ -15,7 +15,7 @@ from gevent.pool import Pool
 from utils import log_exceptions, nice_shutdown
 from utils.logging import configure_logging, wsgi_log_middleware
 
-from gpcsup import construct_app, run_twitter_worker, run_scan
+from gpcsup import construct_app, run_twitter_worker, run_rescan_worker, run_scan
 from gpcsup.dao import GpcSupDao
 
 CONTEXT_SETTINGS = {
@@ -127,6 +127,30 @@ def twitter_worker(**options):
 
 
 @click.command()
+@click.option('--es-node', '-e', default=['localhost'], multiple=True,
+              help='Address of a node in a Elasticsearch cluster to use. '
+                   'Specify multiple nodes by providing the option multiple times. '
+                   'A port can be provided if non-standard (9200) e.g. es1:9999. '
+                   '(default: localhost)')
+@click.option('--es-scan-result-index', default='gpcsup-scan',
+              help='Elasticsearch scan result index. (default=gpcsup-scan)')
+@click.option('--json', '-j', default=False, is_flag=True,
+              help='Log in json.')
+@click.option('--verbose', '-v', default=False, is_flag=True,
+              help='Log debug messages.')
+@log_exceptions(exit_on_exception=True)
+def rescan_worker(**options):
+
+    configure_logging(json=options['json'], verbose=options['verbose'])
+
+    es_client = Elasticsearch(options['es_node'], verify_certs=False)
+    es_dao = GpcSupDao(es_client, options['es_scan_result_index'])
+
+    with nice_shutdown():
+        run_rescan_worker(es_dao, **options)
+
+
+@click.command()
 @click.option('--server', '-s', default='gpcsup.com',
               help='The domain of the GPC Sup instance to run checks on. '
                    '(default: gpcsup.com)')
@@ -149,6 +173,7 @@ def scan(**options):
 
 main.add_command(server)
 main.add_command(twitter_worker)
+main.add_command(rescan_worker)
 main.add_command(scan)
 
 

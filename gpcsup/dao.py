@@ -1,6 +1,5 @@
 import rfc3339
 
-from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Search, Q
 
 
@@ -97,7 +96,7 @@ class GpcSupDao(object):
         self.es_client = es_client
         self.scan_result_index = scan_result_index
 
-    def upsert(self, domain, scan_data, timeout=30, wait_for=False):
+    def upsert(self, domain, scan_data, next_scan_dt, timeout=30, wait_for=False):
         now_dts = get_now_dts()
         body = {
             # Full doc to insert if it doesn't exist.
@@ -105,6 +104,8 @@ class GpcSupDao(object):
                 'domain': domain,
                 'create_dt': now_dts,
                 'update_dt': now_dts,
+                'scan_fails': 0,
+                'next_scan_dt': now_dts,
                 'scan_data': scan_data,
                 'history': [
                     {
@@ -119,6 +120,8 @@ class GpcSupDao(object):
             'script': {
                 'source': (
                     'ctx._source.update_dt = params.update_dt;'
+                    'ctx._source.scan_fails = 0;'
+                    'ctx._source.next_scan_dt = params.next_scan_dt;'
                     # Only add a history entry if this update changes whether the site supports GPC.
                     'if (ctx._source.scan_data.supports_gpc != params.scan_data.supports_gpc) {'
                     '  ctx._source.history.add(['
@@ -133,6 +136,7 @@ class GpcSupDao(object):
                 'lang': 'painless',
                 'params': {
                     'update_dt': now_dts,
+                    'next_scan_dt': rfc3339.datetimetostr(next_scan_dt),
                     'scan_data': scan_data
                 }
             }
@@ -163,6 +167,22 @@ class GpcSupDao(object):
                 'lang': 'painless',
                 'params': {
                     'tweet_dt': now_dts
+                }
+            }
+        }
+        self.es_client.update(index=self.scan_result_index, id=domain, body=body,
+                              request_timeout=timeout, refresh='wait_for' if wait_for else 'false')
+
+    def set_scan_failed(self, domain, next_scan_dt, timeout=30, wait_for=False):
+        body = {
+            'script': {
+                'source': (
+                    'ctx._source.scan_fails += 1;'
+                    'ctx._source.next_scan_dt = params.next_scan_dt;'
+                ),
+                'lang': 'painless',
+                'params': {
+                    'next_scan_dt': rfc3339.datetimetostr(next_scan_dt)
                 }
             }
         }
@@ -224,3 +244,17 @@ class GpcSupDao(object):
         response = s.execute()
 
         return [r.domain for r in response]
+
+    def find_rescanable(self, limit=10, timeout=30):
+
+        s = Search(using=self.es_client, index=self.scan_result_index)
+
+        s = set_date_range('next_scan_dt', s, None, rfc3339.now())
+
+        s = s.sort('next_scan_dt')
+        s = s[:limit]
+        s = s.params(request_timeout=timeout)
+
+        response = s.execute()
+
+        return [(r.domain, r.scan_fails) for r in response]

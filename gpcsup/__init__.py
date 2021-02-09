@@ -45,6 +45,14 @@ GPC_PATH = '/.well-known/gpc.json'
 GPC_MAX_CONTENT_LENGTH = 1024  # 1kB
 
 SCAN_TTL = timedelta(minutes=10)
+NEXT_SCAN_OFFSET = timedelta(days=1)
+SCAN_FAIL_OFFSETS = [
+    timedelta(hours=1),
+    timedelta(hours=6),
+    timedelta(days=1),
+    timedelta(days=7),
+    timedelta(days=30),
+]
 
 SCAN_RESULT_MAX_AGE_SECS = SCAN_TTL.seconds
 SCAN_RESULT_HEADERS = {'Cache-Control': f'max-age={SCAN_RESULT_MAX_AGE_SECS}'}
@@ -388,6 +396,7 @@ def construct_app(es_dao, testing_mode, **kwargs):
             # Server is overloaded - caller needs to try again later.
             abort(503)
 
+        now = rfc3339.now()
         try:
             # A scan makes multiple requests, each with their own timeouts.
             # The requests library doesn't always obey its timeout either -
@@ -402,7 +411,8 @@ def construct_app(es_dao, testing_mode, **kwargs):
         except gevent.Timeout:
             return template('gpc_error', domain=domain)
 
-        es_dao.upsert(domain, scan_data, timeout=30)
+        next_scan_dt = now + NEXT_SCAN_OFFSET
+        es_dao.upsert(domain, scan_data, next_scan_dt, timeout=30)
 
         redirect(f'/sites/{domain}')
 
@@ -520,6 +530,43 @@ def run_twitter_worker(es_dao,
 
         else:
             time.sleep(60)
+
+
+def run_rescan_worker(es_dao, **kwargs):
+
+    while True:
+        now = rfc3339.now()
+
+        domains = es_dao.find_rescanable()
+        if domains:
+            for domain, scan_fails in domains:
+
+                try:
+                    # A scan makes multiple requests, each with their own timeouts.
+                    # The requests library doesn't always obey its timeout either -
+                    # e.g. https://crwdcntrl.net/ seems to take 5-6x the specified timeout.
+                    # Use gevent to add a limit to the overall time taken.
+                    scan_data = gevent.with_timeout(SCAN_TIMEOUT, scan_site_cross_scheme, domain)
+
+                except (ScanError, gevent.Timeout):
+                    scan_data = None
+
+                # Wait for indexing on the last update so we don't pick up the same domains again.
+                wait_for = domain == domains[-1][0]
+                if scan_data:
+                    next_scan_dt = now + NEXT_SCAN_OFFSET
+                    es_dao.upsert(domain, scan_data, next_scan_dt, timeout=30, wait_for=wait_for)
+
+                # The scan failed so update the next scan time so we don't scan again immediately.
+                else:
+                    if scan_fails < len(SCAN_FAIL_OFFSETS):
+                        next_scan_dt = now + SCAN_FAIL_OFFSETS[scan_fails]
+                    else:
+                        next_scan_dt = now + SCAN_FAIL_OFFSETS[-1]
+                    es_dao.set_scan_failed(domain, next_scan_dt, timeout=30, wait_for=wait_for)
+
+        else:
+            time.sleep(10)
 
 
 def run_scan(server, parallel_scans, skip, **kwargs):
