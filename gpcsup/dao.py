@@ -38,7 +38,7 @@ def set_date_range(field, search, date_from, date_to):
 
 
 def apply_filters(s, domain=None, query_string=None,
-                  supports_gpc=None,
+                  supports_gpc=None, www_redirect=None,
                   created_from=None, created_to=None,
                   updated_from=None, updated_to=None,
                   cursor_dt=None, cursor_id=None, cursor_sort=None):
@@ -53,6 +53,12 @@ def apply_filters(s, domain=None, query_string=None,
 
     if supports_gpc is not None:
         s = s.filter('term', **{'scan_data.supports_gpc': supports_gpc})
+
+    if www_redirect is not None:
+        if www_redirect:
+            s = s.filter('exists', field='scan_data.www_redirect')
+        else:
+            s = s.exclude('exists', field='scan_data.www_redirect')
 
     s = set_date_range('create_dt', s, created_from, created_to)
 
@@ -229,8 +235,8 @@ class GpcSupDao(object):
         # Only tweet about sites that support GPC.
         s = s.filter('term', **{'scan_data.supports_gpc': True})
         # Don't tweet about sites that redirect from/to a www subdomain.
-        # We should tweet about the version that is redirected too instead.
-        s = s.exclude('terms', **{'scan_data.www_redirect': ['added', 'removed']})
+        # We should tweet about the version that is redirected to instead.
+        s = s.exclude('exists', field='scan_data.www_redirect')
         # Don't tweet about sites we're previously tweeted about (or may have).
         # We may have set `tweeting` and failed before we could set `tweeted`. In this case, it's
         # unclear if the tweet went out or not - needs to be checked manually.

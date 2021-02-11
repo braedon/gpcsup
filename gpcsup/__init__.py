@@ -423,7 +423,7 @@ def construct_app(es_dao, testing_mode, **kwargs):
         page = params['page']
         offset = page * SITES_PAGE_SIZE
 
-        total, sites = es_dao.find(supports_gpc=True,
+        total, sites = es_dao.find(supports_gpc=True, www_redirect=False,
                                    sort=['id'], offset=offset, limit=SITES_PAGE_SIZE, timeout=30)
         domains = [site[0]['domain'] for site in sites]
 
