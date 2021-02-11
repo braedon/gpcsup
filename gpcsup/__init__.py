@@ -414,6 +414,32 @@ def construct_app(es_dao, testing_mode, **kwargs):
         next_scan_dt = now + NEXT_SCAN_OFFSET
         es_dao.upsert(domain, scan_data, next_scan_dt, timeout=30)
 
+        if scan_data['supports_gpc'] and scan_data.get('www_redirect'):
+            # This domain has a www redirect domain which we'll use as canonical, so we need to make
+            # sure that's been scanned as well.
+            redirect_domain = scan_data['redirect_domain']
+
+            # Does a scan and updates the DB, just like we've just done, but with different error
+            # handling since we're not going to wait for it before responding to the request.
+            def check():
+                now = rfc3339.now()
+                try:
+                    scan_data = scan_site_cross_scheme(redirect_domain)
+
+                    next_scan_dt = now + NEXT_SCAN_OFFSET
+                    es_dao.upsert(redirect_domain, scan_data, next_scan_dt, timeout=30)
+
+                except ScanError:
+                    log.exception('Scan error while scanning www redirect domain %(redirect_domain)s',
+                                  {'redirect_domain': redirect_domain})
+
+                except Exception:
+                    log.exception('Exception while scanning www redirect domain %(redirect_domain)s',
+                                  {'redirect_domain': redirect_domain})
+
+            # Check the redirect domain check in a greenlet. It can run in the background.
+            gevent.spawn(check)
+
         redirect(f'/sites/{domain}')
 
     @app.get('/sites/')
