@@ -20,6 +20,7 @@ def set_headers(r, headers):
 csp_updates = {'img-src': "'self'",
                'style-src': "'self' https://necolas.github.io https://fonts.googleapis.com",
                'font-src': "https://fonts.gstatic.com",
+               'script-src': "'self'",
                'form-action': "'self'"}
 security_headers = SecurityHeadersPlugin(csp_updates=csp_updates)
 

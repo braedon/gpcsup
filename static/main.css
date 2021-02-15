@@ -98,6 +98,16 @@ button.mainButton:active{
   color: var(--color-primary);
 }
 
+form > * {
+  width: 100%;
+}
+form > input {
+  margin-bottom: 10px;
+}
+form > input:last-child {
+  margin-bottom: 0;
+}
+
 svg.bigIcon {
   padding: 20px;
 }
@@ -133,6 +143,10 @@ svg.unknown {
 
   padding: 0;
   margin: 0;
+}
+
+.subInfo {
+  font-size: 0.8em;
 }
 
 html {
@@ -189,10 +203,6 @@ main > *:last-child {
 
 .section > * {
   width: 100%;
-  margin-bottom: 10px;
-}
-.section > *:last-child {
-  margin-bottom: 0;
 }
 
 main > p,

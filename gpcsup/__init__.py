@@ -342,6 +342,10 @@ def construct_app(es_dao, testing_mode, **kwargs):
     def root_pngs(filename):
         return static_file(f'{filename}.png', root='static', headers=STATIC_FILE_HEADERS.copy())
 
+    @app.get('/<filename>.js')
+    def root_js(filename):
+        return static_file(f'{filename}.js', root='static', headers=STATIC_FILE_HEADERS.copy())
+
     @app.get('/.well-known/gpc.json')
     def global_privacy_control():
         return {'gpc': True, 'version': 1}
@@ -481,6 +485,9 @@ def construct_app(es_dao, testing_mode, **kwargs):
         if scan_data.get('www_redirect'):
             domain = scan_data['redirect_domain']
 
+        update_dt = rfc3339.parse_datetime(site['update_dt'])
+        can_rescan = (update_dt + SCAN_TTL) < rfc3339.now()
+
         error = scan_data.get('error')
         if error:
             message = None
@@ -495,7 +502,8 @@ def construct_app(es_dao, testing_mode, **kwargs):
             elif error:
                 log.error('Unsupported GPC scan error %(error)s', {'error': error})
 
-            r = template('gpc_unknown', scheme=scheme, domain=domain, message=message)
+            r = template('gpc_unknown', scheme=scheme, domain=domain,
+                         message=message, update_dt=update_dt, can_rescan=can_rescan)
             set_headers(r, SCAN_RESULT_HEADERS)
             return r
 
@@ -514,7 +522,8 @@ def construct_app(es_dao, testing_mode, **kwargs):
                     message = 'incorrect ' + ' and '.join(bad_fields) + '.'
 
             template_name = 'gpc_supported' if scan_data['supports_gpc'] else 'gpc_unsupported'
-            r = template(template_name, scheme=scheme, domain=domain, message=message)
+            r = template(template_name, scheme=scheme, domain=domain,
+                         message=message, update_dt=update_dt, can_rescan=can_rescan)
             set_headers(r, SCAN_RESULT_HEADERS)
             return r
 

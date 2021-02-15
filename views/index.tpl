@@ -4,8 +4,8 @@ rebase('base.tpl', title='Check a site', open_graph=True,
 %>
 <div class="content">
   <main>
+    <h1>GPC<br>SUP</h1>
     <div class="section">
-      <h1>GPC<br>SUP</h1>
       <p>
         Check if a site supports<br>
         <a href="https://globalprivacycontrol.org" target="_blank" rel="noopener noreferrer">
@@ -19,7 +19,7 @@ rebase('base.tpl', title='Check a site', open_graph=True,
         </a>
       </p>
     </div>
-    <form class="section" action="/" method="POST">
+    <form action="/" method="POST">
       % if defined('domain') and domain:
       <input type="text" name="domain" placeholder="Domain Name" value="{{domain}}" required>
       % else:

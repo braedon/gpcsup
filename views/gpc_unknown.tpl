@@ -1,7 +1,8 @@
 <%
 rebase('base.tpl', title=f'GPC support unknown for {domain}',
        open_graph=True, open_graph_image='gpc_unknown.png',
-       description=f'Global Privacy Control support is not reported by {domain}.')
+       description=f'Global Privacy Control support is not reported by {domain}.',
+       post_scripts=['gpc_res'])
 %>
 <div class="content">
   <main>
@@ -22,6 +23,16 @@ rebase('base.tpl', title=f'GPC support unknown for {domain}',
       <p>
         {{message}}
       </p>
+      % end
+      <p class="subInfo">
+        % from rfc3339 import datetimetostr
+        Checked <span id="updateDateTime">{{datetimetostr(update_dt)}}</span>
+      </p>
+      % if get('can_rescan'):
+      <form action="/" method="POST">
+        <input type="hidden" name="domain" value="{{domain}}">
+        <button>Recheck</button>
+      </form>
       % end
     </div>
   </main>
