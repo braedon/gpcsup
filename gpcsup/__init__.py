@@ -180,6 +180,9 @@ def scan_gpc(domain, scheme='https'):
             elif resp.status_code == 404:
                 data['error'] = 'not-found'
                 return data
+            elif resp.status_code in (203, 204, 300):
+                data['error'] = 'bad-status'
+                return data
             elif 400 <= resp.status_code < 500:
                 data['error'] = 'client-error'
                 return data
@@ -489,8 +492,8 @@ def construct_app(es_dao, testing_mode, **kwargs):
             message = None
             if error == 'not-found':
                 message = 'The GPC support resource was not found.'
-            elif error in ('unexpected-scheme-redirect', 'client-error', 'server-error',
-                           'unexpected-status'):
+            elif error in ('unexpected-scheme-redirect', 'bad-status',
+                           'client-error', 'server-error', 'unexpected-status'):
                 message = 'Server responded unexpectedly when fetching the GPC support resource.'
             elif error in ('parse-error', 'not-json-object', 'invalid-gpc-field',
                            'content-too-long', 'content-length-too-long'):
