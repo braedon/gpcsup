@@ -280,10 +280,11 @@ def scan_site(domain, scheme='https'):
                      {'domain': domain})
             raise ScanError('gpc_blocked', scheme=scheme)
 
-    except (reppy.exceptions.ReppyException,
-            urllib3.exceptions.HTTPError) as e:
-        log.warning('Error when fetching robots.txt for %(domain)s: %(error)s',
-                    {'domain': domain, 'error': e})
+    except (reppy.exceptions.ReppyException, urllib3.exceptions.HTTPError):
+        # Assume there's no robots.txt if we run into an error.
+        # If there's actually something wrong with the domain/server we should encounter the same
+        # error when trying to fetch gpc.json.
+        pass
 
     return scan_gpc(domain, scheme=scheme)
 
