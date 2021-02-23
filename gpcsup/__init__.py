@@ -181,13 +181,9 @@ def scan_gpc(domain, scheme='https'):
                 data['error'] = 'not-found'
                 return data
             elif 400 <= resp.status_code < 500:
-                log.warning('Client error when fetching GPC support resource for %(domain)s: %(status_code)s',
-                            {'domain': domain, 'status_code': resp.status_code})
                 data['error'] = 'client-error'
                 return data
             elif 500 <= resp.status_code < 600:
-                log.warning('Server error when fetching GPC support resource for %(domain)s: %(status_code)s',
-                            {'domain': domain, 'status_code': resp.status_code})
                 data['error'] = 'server-error'
                 return data
             else:
