@@ -237,13 +237,24 @@ def scan_gpc(domain, scheme='https'):
 
             # We've read the content, so safe to close the connection.
 
-    # UnicodeError can be raised if the server redirects incorrectly, e.g.
-    # https://quickconnect.to/.well-known/gpc.json redirects to
-    # https://.well-known.quickconnect.to/https_first/gpc.json, which has an empty first label in
-    # the domain, causing the exception.
-    except (requests.exceptions.RequestException, urllib3.exceptions.HTTPError, UnicodeError) as e:
-        log.warning('Error when fetching gpc.json for %(domain)s: %(error)s',
-                    {'domain': domain, 'error': e})
+    except (requests.exceptions.RequestException,
+            urllib3.exceptions.HTTPError,
+            # UnicodeError can be raised if the server redirects incorrectly, e.g.
+            # https://quickconnect.to/.well-known/gpc.json redirects to
+            # https://.well-known.quickconnect.to/https_first/gpc.json, which has an empty first label in
+            # the domain, causing the exception.
+            UnicodeError) as e:
+
+        # These exceptions are run of the mill, so don't bother logging them.
+        expected_exceptions = (requests.exceptions.ConnectionError,
+                               requests.exceptions.Timeout,
+                               requests.exceptions.TooManyRedirects)
+        if not isinstance(e, expected_exceptions):
+            e_type = type(e)
+            log.warning('Error when fetching gpc.json for %(domain)s: %(error)s',
+                        {'domain': domain, 'error': e,
+                         'exceptionType': e_type.__module__ + '.' + e_type.__name__})
+
         raise ScanError('gpc_error')
 
     try:
