@@ -45,7 +45,7 @@ GPC_PATH = '/.well-known/gpc.json'
 GPC_MAX_CONTENT_LENGTH = 1024  # 1kB
 
 SCAN_TTL = timedelta(minutes=10)
-NEXT_SCAN_OFFSET = timedelta(days=1)
+NEXT_SCAN_OFFSET = timedelta(days=7)
 SCAN_FAIL_OFFSETS = [
     timedelta(hours=1),
     timedelta(hours=6),
