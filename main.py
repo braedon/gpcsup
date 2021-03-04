@@ -178,4 +178,4 @@ main.add_command(scan)
 
 
 if __name__ == '__main__':
-    main(auto_envvar_prefix='SITE_SUP_OPT')
+    main(auto_envvar_prefix='GPC_SUP_OPT')
