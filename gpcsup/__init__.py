@@ -669,6 +669,8 @@ def run_scan(server, parallel_scans, skip, **kwargs):
 
             gevent_pool.spawn(scan_domain, domain)
 
+        gevent_pool.join()
+
     finally:
         rate = count / (time.monotonic() - start_s)
         log.info('Scanned %(count)s domains. Rate %(rate).2f/s', {'count': count, 'rate': rate})
