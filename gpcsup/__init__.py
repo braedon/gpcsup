@@ -578,38 +578,42 @@ def run_twitter_worker(es_dao,
             time.sleep(60)
 
 
-def run_rescan_worker(es_dao, **kwargs):
+def run_rescan_worker(es_dao, parallel_scans, batch_size, **kwargs):
 
+    def scan_domain(domain, scan_fails, wait_for=False):
+        try:
+            # A scan makes multiple requests, each with their own timeouts.
+            # The requests library doesn't always obey its timeout either -
+            # e.g. https://crwdcntrl.net/ seems to take 5-6x the specified timeout.
+            # Use gevent to add a limit to the overall time taken.
+            scan_data = gevent.with_timeout(SCAN_TIMEOUT, scan_site_cross_scheme, domain)
+
+            next_scan_dt = now + NEXT_SCAN_OFFSET
+            es_dao.upsert(domain, scan_data, next_scan_dt, timeout=30, wait_for=wait_for)
+
+        except (ScanError, gevent.Timeout):
+
+            if scan_fails < len(SCAN_FAIL_OFFSETS):
+                next_scan_dt = now + SCAN_FAIL_OFFSETS[scan_fails]
+            else:
+                next_scan_dt = now + SCAN_FAIL_OFFSETS[-1]
+
+            es_dao.set_scan_failed(domain, next_scan_dt, timeout=30, wait_for=wait_for)
+
+    gevent_pool = Pool(parallel_scans)
     while True:
         now = rfc3339.now()
 
-        domains = es_dao.find_rescanable()
+        domains = es_dao.find_rescanable(limit=batch_size)
         if domains:
+            greenlets = []
             for domain, scan_fails in domains:
-
-                try:
-                    # A scan makes multiple requests, each with their own timeouts.
-                    # The requests library doesn't always obey its timeout either -
-                    # e.g. https://crwdcntrl.net/ seems to take 5-6x the specified timeout.
-                    # Use gevent to add a limit to the overall time taken.
-                    scan_data = gevent.with_timeout(SCAN_TIMEOUT, scan_site_cross_scheme, domain)
-
-                except (ScanError, gevent.Timeout):
-                    scan_data = None
-
                 # Wait for indexing on the last update so we don't pick up the same domains again.
                 wait_for = domain == domains[-1][0]
-                if scan_data:
-                    next_scan_dt = now + NEXT_SCAN_OFFSET
-                    es_dao.upsert(domain, scan_data, next_scan_dt, timeout=30, wait_for=wait_for)
+                greenlet = gevent_pool.spawn(scan_domain, domain, scan_fails, wait_for=wait_for)
+                greenlets.append(greenlet)
 
-                # The scan failed so update the next scan time so we don't scan again immediately.
-                else:
-                    if scan_fails < len(SCAN_FAIL_OFFSETS):
-                        next_scan_dt = now + SCAN_FAIL_OFFSETS[scan_fails]
-                    else:
-                        next_scan_dt = now + SCAN_FAIL_OFFSETS[-1]
-                    es_dao.set_scan_failed(domain, next_scan_dt, timeout=30, wait_for=wait_for)
+            gevent.joinall(greenlets, raise_error=True)
 
         else:
             time.sleep(10)
