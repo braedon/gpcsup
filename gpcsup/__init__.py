@@ -429,7 +429,7 @@ def construct_app(es_dao, testing_mode, **kwargs):
         next_scan_dt = now + NEXT_SCAN_OFFSET
         es_dao.upsert(domain, scan_data, next_scan_dt, timeout=30)
 
-        if scan_data['supports_gpc'] and scan_data.get('www_redirect'):
+        if scan_data.get('www_redirect'):
             # This domain has a www redirect domain which we'll use as canonical, so we need to make
             # sure that's been scanned as well.
             redirect_domain = scan_data['redirect_domain']
