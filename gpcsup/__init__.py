@@ -66,7 +66,7 @@ SERVER_READY = True
 
 
 class ScanError(Exception):
-    """Indicates the user should be shown the login page"""
+    """The scan has failed, and the user should be shown the specified template."""
 
     def __init__(self, template, **kwargs):
         self.template = template
@@ -452,7 +452,7 @@ def construct_app(es_dao, testing_mode, **kwargs):
                     log.exception('Exception while scanning www redirect domain %(redirect_domain)s',
                                   {'redirect_domain': redirect_domain})
 
-            # Check the redirect domain check in a greenlet. It can run in the background.
+            # Check the redirect domain in a greenlet. It can run in the background.
             gevent.spawn(check)
 
         redirect(f'/sites/{domain}')
@@ -624,18 +624,18 @@ def run_scan(server, parallel_scans, skip, **kwargs):
     block_size = 100
 
     def scan_domain(domain):
-        log.debug('Scanning domain %(domain)s.', {'domain': domain})
+        log.debug('Scanning %(domain)s.', {'domain': domain})
         # Don't follow redirects on successful scan to avoid unnecesary load on the server.
         resp = requests.post(f'https://{server}', data={'domain': domain},
                              allow_redirects=False)
 
         # 200 if the domain couldn't be scanned, 303 for redirects to scan results.
         if resp.status_code not in (200, 303):
-            log.error('Unexpected status when scanning domain %(domain)s: %(status_code)s',
+            log.error('Unexpected status when scanning %(domain)s: %(status_code)s',
                       {'domain': domain, 'status_code': resp.status_code})
             raise SystemExit('Unexpected status, aborting.')
 
-        log.debug('Scanned domain %(domain)s.', {'domain': domain})
+        log.debug('Scanned %(domain)s.', {'domain': domain})
 
         nonlocal count, block_start_s
         count += 1
