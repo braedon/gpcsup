@@ -6,9 +6,9 @@
 #       > pip3 uninstall bottle
 git+git://github.com/braedon/bottle@master#egg=bottle
 click==7.1.2
-elasticsearch==7.9.1
+elasticsearch==7.11.0
 elasticsearch-dsl==7.3.0
-gevent==20.9.0
+gevent==21.1.2
 idna==2.10  # Requests needs version 2.x - doesn't support 3.x
 jog==0.1.1
 requests==2.25.1
