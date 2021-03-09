@@ -17,7 +17,8 @@ from reppy.robots import Robots
 from requests_oauthlib import OAuth1
 from urllib.parse import urlsplit
 
-from utils.param_parse import ParamParseError, parse_params, integer_param, string_param
+from utils.param_parse import (ParamParseError, parse_params,
+                               integer_param, string_param, boolean_param)
 
 from .misc import html_default_error_hander, security_headers, set_headers
 
@@ -386,7 +387,9 @@ def construct_app(es_dao, testing_mode, **kwargs):
         try:
             params = parse_params(request.forms.decode(),
                                   domain=string_param('domain', required=True, strip=True,
-                                                      min_length=1, max_length=DOMAIN_MAX_LENGTH))
+                                                      min_length=1, max_length=DOMAIN_MAX_LENGTH),
+                                  no_rescan=boolean_param('no_rescan', default=False, empty=True,
+                                                          strip=True))
         except ParamParseError:
             return template('gpc_invalid', domain=None)
 
@@ -396,6 +399,9 @@ def construct_app(es_dao, testing_mode, **kwargs):
 
         site = es_dao.get(domain)
         if site is not None:
+            if params['no_rescan']:
+                redirect(f'/sites/{domain}')
+
             update_dt = rfc3339.parse_datetime(site['update_dt'])
             # If the last scan hasn't expired yet, don't rescan.
             if rfc3339.now() < update_dt + SCAN_TTL:
@@ -619,7 +625,7 @@ def run_rescan_worker(es_dao, parallel_scans, batch_size, **kwargs):
             time.sleep(10)
 
 
-def run_scan(server, parallel_scans, skip, **kwargs):
+def run_scan(server, rescan, parallel_scans, skip, **kwargs):
     gevent_pool = Pool(parallel_scans)
 
     count = 0
@@ -630,7 +636,7 @@ def run_scan(server, parallel_scans, skip, **kwargs):
     def scan_domain(domain):
         log.debug('Scanning %(domain)s.', {'domain': domain})
         # Don't follow redirects on successful scan to avoid unnecesary load on the server.
-        resp = requests.post(f'https://{server}', data={'domain': domain},
+        resp = requests.post(f'https://{server}', data={'domain': domain, 'no_rescan': not rescan},
                              allow_redirects=False)
 
         # 200 if the domain couldn't be scanned, 303 for redirects to scan results.
