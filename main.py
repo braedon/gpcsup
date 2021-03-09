@@ -136,7 +136,7 @@ def twitter_worker(**options):
               help='Elasticsearch scan result index. (default=gpcsup-scan)')
 @click.option('--parallel-scans', '-p', default=10,
               help='How many domains scan in parallel (default=10).')
-@click.option('--batch-size', '-p', default=1000,
+@click.option('--batch-size', '-b', default=1000,
               help='How many domains scan in a batch (default=1000).')
 @click.option('--json', '-j', default=False, is_flag=True,
               help='Log in json.')
