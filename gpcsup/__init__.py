@@ -298,6 +298,13 @@ def scan_site(domain, scheme='https'):
         # error when trying to fetch gpc.json.
         pass
 
+    except ValueError as e:
+        # Probably something wrong with the robots.txt file.
+        # Assume we're allowed to scan since we don't have a valid file telling us not to.
+        # Log and proceed.
+        log.warning('Error when parsing robots.txt for %(scheme)s://%(domain)s: %(error)s',
+                    {'scheme': scheme, 'domain': domain, 'error': e, 'exceptionType': 'ValueError'})
+
     return scan_gpc(domain, scheme=scheme)
 
 
