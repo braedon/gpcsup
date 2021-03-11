@@ -451,8 +451,9 @@ def construct_app(es_dao, testing_mode, **kwargs):
                     es_dao.upsert(redirect_domain, scan_data, next_scan_dt, timeout=30)
 
                 except ScanError:
-                    log.exception('Scan error while scanning www redirect domain %(redirect_domain)s',
-                                  {'redirect_domain': redirect_domain})
+                    # No need to log this - if the error was notable it'll already have been logged
+                    # when the ScanError was raised.
+                    pass
 
                 except Exception:
                     log.exception('Exception while scanning www redirect domain %(redirect_domain)s',
