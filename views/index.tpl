@@ -28,9 +28,10 @@ rebase('base.tpl', title='Check a site', open_graph=True,
       <button class="mainButton">Check Site</button>
     </form>
   </main>
+  % if supporting_count:
   <footer>
-    <div class="linkRow">
-      <a href="/sites/">Supporting Sites</a>
-    </div>
+    <p>{{ f'{scanned_count:,}' }} sites scanned</p>
+    <a href="/sites/">{{ f'{supporting_count:,}' }} supporting sites found</a>
   </footer>
+  % end
 </div>

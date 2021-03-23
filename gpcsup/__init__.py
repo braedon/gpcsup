@@ -385,7 +385,10 @@ def construct_app(es_dao, testing_mode, **kwargs):
             if not check_domain(domain):
                 domain = None
 
-        r = template('index', domain=domain)
+        scanned_count, support_counts = es_dao.count(www_redirect=False, timeout=30)
+
+        r = template('index', domain=domain,
+                     scanned_count=scanned_count, supporting_count=support_counts[1])
         set_headers(r, STATIC_FILE_HEADERS)
         return r
 

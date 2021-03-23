@@ -228,6 +228,27 @@ class GpcSupDao(object):
 
         return response.hits.total.value, sites
 
+    def count(self,
+              timeout=30, **filter_params):
+
+        s = Search(using=self.es_client, index=self.scan_result_index)
+
+        s = apply_filters(s, **filter_params)
+
+        # Don't need any actual results - just the count and aggregations.
+        s = s[0:0]
+
+        s.aggs.bucket('by_support', 'terms', field='scan_data.supports_gpc')
+
+        s = s.extra(track_total_hits=True)
+        s = s.params(request_timeout=timeout)
+
+        response = s.execute()
+
+        support_counts = {b.key: b.doc_count for b in response.aggregations.by_support.buckets}
+
+        return response.hits.total.value, support_counts
+
     def find_tweetable(self, limit=10, timeout=30):
 
         s = Search(using=self.es_client, index=self.scan_result_index)
