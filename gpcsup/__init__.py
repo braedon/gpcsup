@@ -126,6 +126,15 @@ def check_domain(domain):
     return True
 
 
+def extract_domain_from_url(url):
+    split_url = urlsplit(url)
+    domain = split_url.netloc
+    if ':' in domain:
+        domain = domain.split(':', 1)[0]
+
+    return normalise_domain(domain)
+
+
 def scan_gpc(domain, scheme='https'):
     url = f'{scheme}://{domain}{GPC_PATH}'
 
@@ -163,9 +172,7 @@ def scan_gpc(domain, scheme='https'):
                     data['redirect_scheme'] = resp_scheme
                     data['warnings'].append('scheme-redirect')
 
-                resp_domain = resp_split_url.netloc
-                if ':' in resp_domain:
-                    resp_domain = resp_domain.split(':', 1)[0]
+                resp_domain = extract_domain_from_url(resp.url)
 
                 if resp_domain != domain:
                     data['redirect_domain'] = resp_domain
@@ -453,10 +460,11 @@ def construct_app(es_dao, testing_mode, **kwargs):
         next_scan_dt = now + NEXT_SCAN_OFFSET
         es_dao.upsert(domain, scan_data, next_scan_dt, timeout=30)
 
-        if scan_data.get('www_redirect'):
-            # This domain has a www redirect domain which we'll use as canonical, so we need to make
-            # sure that's been scanned as well.
-            redirect_domain = scan_data['redirect_domain']
+        redirect_domain = scan_data.get('redirect_domain')
+        if redirect_domain and check_domain(redirect_domain):
+            # Check the redirect domain as well to make sure its in our data set.
+            # This is particularly important for www redirect domains, as we use them as the
+            # canonical domain.
 
             # Does a scan and updates the DB, just like we've just done, but with different error
             # handling since we're not going to wait for it before responding to the request.
@@ -474,7 +482,7 @@ def construct_app(es_dao, testing_mode, **kwargs):
                     pass
 
                 except Exception:
-                    log.exception('Exception while scanning www redirect domain %(redirect_domain)s',
+                    log.exception('Exception while scanning redirect domain %(redirect_domain)s',
                                   {'redirect_domain': redirect_domain})
 
             # Check the redirect domain in a greenlet. It can run in the background.
