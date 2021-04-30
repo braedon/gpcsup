@@ -25,6 +25,12 @@ from .misc import html_default_error_hander, security_headers, set_headers
 
 log = logging.getLogger(__name__)
 
+# Disable some logging to reduce log spam.
+# Reppy cache logs exceptions when fetching robots.txt.
+logging.getLogger('reppy').setLevel(logging.CRITICAL)
+# Elasticsearch logs all requests at (at least) INFO level.
+logging.getLogger('elasticsearch').setLevel(logging.WARNING)
+
 # Domains are a series of one or more names, separated by periods, with an optional trailing period.
 # (Note that we actually strip any trailing period during normalization - along with lowercasing
 #  characters - but support has been left in the regex for completeness.)
@@ -184,6 +190,9 @@ def scan_gpc(domain, scheme='https'):
             elif resp.status_code in (203, 204, 300):
                 data['error'] = 'bad-status'
                 return data
+            elif 300 <= resp.status_code < 400:
+                data['error'] = 'bad-redirect'
+                return data
             elif 400 <= resp.status_code < 500:
                 data['error'] = 'client-error'
                 return data
@@ -191,7 +200,8 @@ def scan_gpc(domain, scheme='https'):
                 data['error'] = 'server-error'
                 return data
             else:
-                log.warning('Unexpected status when fetching GPC support resource for %(domain)s: %(status_code)s',
+                log.warning('Unexpected status when fetching GPC support resource for %(domain)s: '
+                            '%(status_code)s',
                             {'domain': domain, 'status_code': resp.status_code})
                 data['error'] = 'unexpected-status'
                 return data
@@ -521,7 +531,7 @@ def construct_app(es_dao, testing_mode, **kwargs):
             message = None
             if error == 'not-found':
                 message = 'The GPC support resource was not found.'
-            elif error in ('unexpected-scheme-redirect', 'bad-status',
+            elif error in ('unexpected-scheme-redirect', 'bad-status', 'bad-redirect',
                            'client-error', 'server-error', 'unexpected-status'):
                 message = 'Server responded unexpectedly when fetching the GPC support resource.'
             elif error in ('parse-error', 'not-json-object', 'invalid-gpc-field',
