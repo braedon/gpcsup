@@ -243,14 +243,6 @@ def scan_gpc(domain, scheme='https'):
                 data['error'] = 'content-too-long'
                 return data
 
-            if resp.encoding:
-                try:
-                    data['text'] = content.decode(resp.encoding)
-                except LookupError:
-                    data['warnings'].append('encoding-unsupported')
-            else:
-                data['warnings'].append('encoding-unknown')
-
             # We've read the content, so safe to close the connection.
 
     except (requests.exceptions.RequestException,
