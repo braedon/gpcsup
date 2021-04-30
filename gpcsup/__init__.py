@@ -31,13 +31,14 @@ logging.getLogger('reppy').setLevel(logging.CRITICAL)
 # Elasticsearch logs all requests at (at least) INFO level.
 logging.getLogger('elasticsearch').setLevel(logging.WARNING)
 
-# Domains are a series of one or more names, separated by periods, with an optional trailing period.
+# Domains are a series of two or more names, separated by periods, with an optional trailing period.
+# (Technically one name is allowed, but TLDs aren't usually HTTP sites.)
 # (Note that we actually strip any trailing period during normalization - along with lowercasing
 #  characters - but support has been left in the regex for completeness.)
 # Each name can contain latin characters (case insensitive), digits, or dashes.
 # Names can't be longer than 63 characters, or start/end with a dash.
 # The final name - the TLD - can't be numeric (only digits).
-DOMAIN_REGEX = re.compile(r'^(?:[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.)*(?!\d+\.?$)[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.?$')
+DOMAIN_REGEX = re.compile(r'^(?:[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.)+(?!\d+\.?$)[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.?$')
 DOMAIN_MAX_LENGTH = 253
 
 REQUEST_TIMEOUT_INDIVIDUAL = 5
