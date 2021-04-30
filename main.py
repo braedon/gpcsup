@@ -156,8 +156,8 @@ def rescan_worker(**options):
 
 @click.command()
 @click.option('--server', '-s', default='gpcsup.com',
-              help='The domain of the GPC Sup instance to run checks on. '
-                   '(default: gpcsup.com)')
+              help='The GPC Sup instance to run checks on. '
+                   '(default: https://gpcsup.com)')
 @click.option('--rescan', '-r', default=False, is_flag=True,
               help='Rescan known domains.')
 @click.option('--parallel-scans', '-p', default=10,

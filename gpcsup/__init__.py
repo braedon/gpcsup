@@ -655,7 +655,7 @@ def run_scan(server, rescan, parallel_scans, skip, **kwargs):
     def scan_domain(domain):
         log.debug('Scanning %(domain)s.', {'domain': domain})
         # Don't follow redirects on successful scan to avoid unnecesary load on the server.
-        resp = requests.post(f'https://{server}', data={'domain': domain, 'no_rescan': not rescan},
+        resp = requests.post(server, data={'domain': domain, 'no_rescan': not rescan},
                              allow_redirects=False)
 
         # 200 if the domain couldn't be scanned, 303 for redirects to scan results.
