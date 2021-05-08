@@ -11,7 +11,7 @@ rebase('base.tpl', title=f'GPC supported by {domain}',
         <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <p>
-        <a href="{{scheme}}://{{domain}}" target="_blank" rel="noopener noreferrer">
+        <a href="{{scheme}}://{{domain}}" target="_blank" rel="noopener noreferrer nofollow">
           {{domain}}
         </a><br>
         reports that it supports<br>
