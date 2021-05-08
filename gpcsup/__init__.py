@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 from utils.param_parse import (ParamParseError, parse_params,
                                integer_param, string_param, boolean_param)
 
-from .misc import html_default_error_hander, security_headers, set_headers
+from .misc import html_default_error_hander, security_headers, set_headers, relax_requests_ssl
 
 
 log = logging.getLogger(__name__)
@@ -318,7 +318,10 @@ def scan_site(domain, scheme='https'):
 
 def scan_site_cross_scheme(domain):
     try:
-        return scan_site(domain, scheme='https')
+        # Some sites have weak SSL configurations that aren't supported with the default SSL
+        # security level 2. Relax to security level 1 to allow them to be scanned regardless.
+        with relax_requests_ssl():
+            return scan_site(domain, scheme='https')
 
     except ScanError as e:
         if e.template == 'gpc_error':
