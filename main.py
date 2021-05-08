@@ -42,6 +42,8 @@ def main():
                    '(default: localhost)')
 @click.option('--es-scan-result-index', default='gpcsup-scan',
               help='Elasticsearch scan result index. (default=gpcsup-scan)')
+@click.option('--parallel-scans', '-p', default=50,
+              help='How many domains scan in parallel (default=50).')
 @click.option('--port', '-p', default=8080,
               help='Port to serve on (default=8080).')
 @click.option('--shutdown-sleep', default=10,
@@ -80,7 +82,8 @@ def server(**options):
 
     configure_logging(json=options['json'], verbose=options['verbose'])
 
-    es_client = Elasticsearch(options['es_node'], verify_certs=False)
+    es_client = Elasticsearch(options['es_node'], verify_certs=False,
+                              maxsize=options['parallel_scans'])
     es_dao = GpcSupDao(es_client, options['es_scan_result_index'])
 
     app = construct_app(es_dao, **options)
@@ -134,8 +137,8 @@ def twitter_worker(**options):
                    '(default: localhost)')
 @click.option('--es-scan-result-index', default='gpcsup-scan',
               help='Elasticsearch scan result index. (default=gpcsup-scan)')
-@click.option('--parallel-scans', '-p', default=10,
-              help='How many domains scan in parallel (default=10).')
+@click.option('--parallel-scans', '-p', default=50,
+              help='How many domains scan in parallel (default=50).')
 @click.option('--batch-size', '-b', default=1000,
               help='How many domains scan in a batch (default=1000).')
 @click.option('--json', '-j', default=False, is_flag=True,
@@ -147,7 +150,8 @@ def rescan_worker(**options):
 
     configure_logging(json=options['json'], verbose=options['verbose'])
 
-    es_client = Elasticsearch(options['es_node'], verify_certs=False)
+    es_client = Elasticsearch(options['es_node'], verify_certs=False,
+                              maxsize=options['parallel_scans'])
     es_dao = GpcSupDao(es_client, options['es_scan_result_index'])
 
     with nice_shutdown():

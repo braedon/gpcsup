@@ -43,7 +43,6 @@ DOMAIN_MAX_LENGTH = 253
 
 REQUEST_TIMEOUT_INDIVIDUAL = 5
 
-SCAN_MAX_PARALLEL = 10
 SCAN_START_TIMEOUT = 20
 SCAN_TIMEOUT = 30
 SCAN_AGENT = 'GpcSupBot'
@@ -331,7 +330,7 @@ def scan_site_cross_scheme(domain):
             raise
 
 
-def construct_app(es_dao, testing_mode, **kwargs):
+def construct_app(es_dao, parallel_scans, testing_mode, **kwargs):
 
     app = Bottle()
     app.default_error_handler = html_default_error_hander
@@ -339,7 +338,7 @@ def construct_app(es_dao, testing_mode, **kwargs):
     app.install(security_headers)
 
     # Scans are run in a limited size pool to avoid flooding a process with a lot of parallel scans.
-    scan_pool = Pool(SCAN_MAX_PARALLEL)
+    scan_pool = Pool(parallel_scans)
 
     @app.get('/-/live')
     def live():
