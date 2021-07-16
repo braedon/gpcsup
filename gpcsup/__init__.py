@@ -275,8 +275,20 @@ def scan_gpc(domain, scheme='https'):
         data['error'] = 'not-json-object'
         return data
 
-    if resp_json.get('version') != 1:
-        data['warnings'].append('invalid-version-field')
+    if 'lastUpdate' in resp_json:
+        last_update = resp_json['lastUpdate']
+        if isinstance(last_update, str):
+            try:
+                data['last_update_dt'] = rfc3339.parse_datetime(last_update)
+            except ValueError:
+                try:
+                    data['last_update_d'] = rfc3339.parse_date(last_update)
+                except ValueError:
+                    data['warnings'].append('invalid-update-field')
+        else:
+            data['warnings'].append('invalid-update-field')
+    else:
+        data['warnings'].append('missing-update-field')
 
     if 'gpc' not in resp_json or not isinstance(resp_json['gpc'], bool):
         data['error'] = 'invalid-gpc-field'
@@ -377,7 +389,7 @@ def construct_app(es_dao, parallel_scans, testing_mode, **kwargs):
 
     @app.get('/.well-known/gpc.json')
     def global_privacy_control():
-        return {'gpc': True, 'version': 1}
+        return {'gpc': True, 'lastUpdate': '2021-07-17'}
 
     @app.get('/')
     def index():
@@ -550,15 +562,17 @@ def construct_app(es_dao, parallel_scans, testing_mode, **kwargs):
             warnings = scan_data.get('warnings')
             message = None
             if warnings:
-                bad_fields = []
+                message_parts = []
                 for warning in warnings:
                     if warning == 'wrong-content-type':
-                        bad_fields.append('content type')
-                    elif warning == 'invalid-version-field':
-                        bad_fields.append('version field')
+                        message_parts.append('incorrect content type')
+                    elif warning == 'invalid-update-field':
+                        message_parts.append('invalid last update field')
+                    elif warning == 'missing-update-field':
+                        message_parts.append('missing last update field')
 
-                if bad_fields:
-                    message = 'incorrect ' + ' and '.join(bad_fields) + '.'
+                if message_parts:
+                    message = ' and '.join(message_parts) + '.'
 
             template_name = 'gpc_supported' if scan_data['supports_gpc'] else 'gpc_unsupported'
             r = template(template_name, scheme=scheme, domain=domain,
