@@ -1,4 +1,4 @@
-% rebase('base.tpl', title='Error')
+% rebase('base.tpl', title=f'Invalid domain', no_index=True)
 <div class="content">
   <main>
     <div class="section">

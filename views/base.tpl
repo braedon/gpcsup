@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <title>GPC Support: {{title}}</title>
+    <title>{{title}} - GPC Support</title>
 
     % if defined('description'):
     <meta name="Description" content="{{description}}">
@@ -24,6 +24,14 @@
 
     <meta name="twitter:site" content="@gpcsup">
     <meta name="twitter:creator" content="@braedon">
+    % end
+
+    % if defined('no_index') and no_index:
+    <meta name="robots" content="noindex">
+    % end
+    % canonical_url = get('canonical_url')
+    % if canonical_url:
+    <link rel="canonical" href="{{canonical_url}}">
     % end
 
     <link rel="stylesheet" type="text/css" href="https://necolas.github.io/normalize.css/8.0.1/normalize.css" crossorigin>

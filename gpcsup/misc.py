@@ -1,20 +1,8 @@
-import requests
 import textwrap
 
 from bottle import HTTPResponse, response, template
-from contextlib import contextmanager
 
 from utils.security_headers import SecurityHeadersPlugin
-
-
-@contextmanager
-def relax_requests_ssl():
-    default_ciphers = requests.packages.urllib3.util.ssl_.DEFAULT_CIPHERS
-    requests.packages.urllib3.util.ssl_.DEFAULT_CIPHERS += ':@SECLEVEL=1'
-    try:
-        yield
-    finally:
-        requests.packages.urllib3.util.ssl_.DEFAULT_CIPHERS = default_ciphers
 
 
 def indent(block, indent=2):

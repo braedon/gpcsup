@@ -15,7 +15,7 @@ from gevent.pool import Pool
 from utils import log_exceptions, nice_shutdown
 from utils.logging import configure_logging, wsgi_log_middleware
 
-from gpcsup import construct_app, run_twitter_worker, run_rescan_worker, run_scan
+from gpcsup import construct_app, run_twitter_worker
 from gpcsup.dao import GpcSupDao
 
 CONTEXT_SETTINGS = {
@@ -40,10 +40,10 @@ def main():
                    'Specify multiple nodes by providing the option multiple times. '
                    'A port can be provided if non-standard (9200) e.g. es1:9999. '
                    '(default: localhost)')
-@click.option('--es-scan-result-index', default='gpcsup-scan',
-              help='Elasticsearch scan result index. (default=gpcsup-scan)')
-@click.option('--parallel-scans', '-p', default=50,
-              help='How many domains scan in parallel (default=50).')
+@click.option('--es-scan-result-index', default='well-known-scan',
+              help='Elasticsearch scan result index. (default=well-known-scan)')
+@click.option('--well-known-sites-endpoint', default='http://localhost:8080/sites/',
+              help='Well-Known instance sites endpoint. (default=http://localhost:8080/sites/)')
 @click.option('--port', '-p', default=8080,
               help='Port to serve on (default=8080).')
 @click.option('--shutdown-sleep', default=10,
@@ -82,8 +82,7 @@ def server(**options):
 
     configure_logging(json=options['json'], verbose=options['verbose'])
 
-    es_client = Elasticsearch(options['es_node'], verify_certs=False,
-                              maxsize=options['parallel_scans'])
+    es_client = Elasticsearch(options['es_node'], verify_certs=False)
     es_dao = GpcSupDao(es_client, options['es_scan_result_index'])
 
     app = construct_app(es_dao, **options)
@@ -111,8 +110,8 @@ def server(**options):
                    'Specify multiple nodes by providing the option multiple times. '
                    'A port can be provided if non-standard (9200) e.g. es1:9999. '
                    '(default: localhost)')
-@click.option('--es-scan-result-index', default='gpcsup-scan',
-              help='Elasticsearch scan result index. (default=gpcsup-scan)')
+@click.option('--es-scan-result-index', default='well-known-scan',
+              help='Elasticsearch scan result index. (default=well-known-scan)')
 @click.option('--json', '-j', default=False, is_flag=True,
               help='Log in json.')
 @click.option('--verbose', '-v', default=False, is_flag=True,
@@ -129,62 +128,8 @@ def twitter_worker(**options):
         run_twitter_worker(es_dao, **options)
 
 
-@click.command()
-@click.option('--es-node', '-e', default=['localhost'], multiple=True,
-              help='Address of a node in a Elasticsearch cluster to use. '
-                   'Specify multiple nodes by providing the option multiple times. '
-                   'A port can be provided if non-standard (9200) e.g. es1:9999. '
-                   '(default: localhost)')
-@click.option('--es-scan-result-index', default='gpcsup-scan',
-              help='Elasticsearch scan result index. (default=gpcsup-scan)')
-@click.option('--parallel-scans', '-p', default=50,
-              help='How many domains scan in parallel (default=50).')
-@click.option('--batch-size', '-b', default=1000,
-              help='How many domains scan in a batch (default=1000).')
-@click.option('--json', '-j', default=False, is_flag=True,
-              help='Log in json.')
-@click.option('--verbose', '-v', default=False, is_flag=True,
-              help='Log debug messages.')
-@log_exceptions(exit_on_exception=True)
-def rescan_worker(**options):
-
-    configure_logging(json=options['json'], verbose=options['verbose'])
-
-    es_client = Elasticsearch(options['es_node'], verify_certs=False,
-                              maxsize=options['parallel_scans'])
-    es_dao = GpcSupDao(es_client, options['es_scan_result_index'])
-
-    with nice_shutdown():
-        run_rescan_worker(es_dao, **options)
-
-
-@click.command()
-@click.option('--server', '-s', default='gpcsup.com',
-              help='The GPC Sup instance to run checks on. '
-                   '(default: https://gpcsup.com)')
-@click.option('--rescan', '-r', default=False, is_flag=True,
-              help='Rescan known domains.')
-@click.option('--parallel-scans', '-p', default=10,
-              help='How many domains scan in parallel (default=10).')
-@click.option('--skip', default=0,
-              help='How many domains to skip from the start of the input (default=0).')
-@click.option('--json', '-j', default=False, is_flag=True,
-              help='Log in json.')
-@click.option('--verbose', '-v', default=False, is_flag=True,
-              help='Log debug messages.')
-@log_exceptions(exit_on_exception=True)
-def scan(**options):
-
-    configure_logging(json=options['json'], verbose=options['verbose'])
-
-    with nice_shutdown():
-        run_scan(**options)
-
-
 main.add_command(server)
 main.add_command(twitter_worker)
-main.add_command(rescan_worker)
-main.add_command(scan)
 
 
 if __name__ == '__main__':

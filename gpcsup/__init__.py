@@ -1,33 +1,24 @@
-import gevent
 import idna
-import json
 import logging
 import re
-import reppy
 import requests
 import rfc3339
-import sys
 import time
-import urllib3
 
-from bottle import Bottle, abort, request, response, static_file, template, redirect
+from bottle import Bottle, request, response, static_file, template, redirect
 from datetime import timedelta
-from gevent.pool import Pool
-from reppy.robots import Robots
 from requests_oauthlib import OAuth1
 from urllib.parse import urlsplit
 
 from utils.param_parse import (ParamParseError, parse_params,
                                integer_param, string_param, boolean_param)
 
-from .misc import html_default_error_hander, security_headers, set_headers, relax_requests_ssl
+from .misc import html_default_error_hander, security_headers, set_headers
 
 
 log = logging.getLogger(__name__)
 
 # Disable some logging to reduce log spam.
-# Reppy cache logs exceptions when fetching robots.txt.
-logging.getLogger('reppy').setLevel(logging.CRITICAL)
 # Elasticsearch logs all requests at (at least) INFO level.
 logging.getLogger('elasticsearch').setLevel(logging.WARNING)
 
@@ -135,222 +126,12 @@ def extract_domain_from_url(url):
     return normalise_domain(domain)
 
 
-def scan_gpc(domain, scheme='https'):
-    url = f'{scheme}://{domain}{GPC_PATH}'
-
-    try:
-        with requests.get(url, headers=SCAN_HEADERS,
-                          timeout=REQUEST_TIMEOUT_INDIVIDUAL, stream=True) as resp:
-            data = {
-                'scheme': scheme,
-                'url': resp.url,
-                'status_code': resp.status_code,
-                'supports_gpc': False,
-                'warnings': [],
-            }
-
-            if resp.history:
-                data['redirects'] = [
-                    {
-                        'url': r.url,
-                        'status_code': r.status_code,
-                        'location': r.headers.get('Location'),
-                    }
-                    for r in resp.history
-                ]
-
-            if resp.url != url:
-                data['redirect_url'] = resp.url
-
-                resp_split_url = urlsplit(resp.url)
-
-                resp_scheme = resp_split_url.scheme
-                if resp_scheme not in ('http', 'https'):
-                    data['error'] = 'unexpected-scheme-redirect'
-                    return data
-                if resp_scheme != scheme:
-                    data['redirect_scheme'] = resp_scheme
-                    data['warnings'].append('scheme-redirect')
-
-                resp_domain = extract_domain_from_url(resp.url)
-
-                if resp_domain != domain:
-                    data['redirect_domain'] = resp_domain
-
-                    if resp_domain.startswith('www.') and resp_domain[4:] == domain:
-                        data['www_redirect'] = 'added'
-                    elif domain.startswith('www.') and domain[4:] == resp_domain:
-                        data['www_redirect'] = 'removed'
-                    else:
-                        data['warnings'].append('domain-redirect')
-
-                if resp_split_url.path != GPC_PATH:
-                    data['warnings'].append('path-redirect')
-
-            if resp.status_code == 200:
-                pass
-            elif resp.status_code == 404:
-                data['error'] = 'not-found'
-                return data
-            elif resp.status_code in (203, 204, 300):
-                data['error'] = 'bad-status'
-                return data
-            elif 300 <= resp.status_code < 400:
-                data['error'] = 'bad-redirect'
-                return data
-            elif 400 <= resp.status_code < 500:
-                data['error'] = 'client-error'
-                return data
-            elif 500 <= resp.status_code < 600:
-                data['error'] = 'server-error'
-                return data
-            else:
-                log.warning('Unexpected status when fetching GPC support resource for %(domain)s: '
-                            '%(status_code)s',
-                            {'domain': domain, 'status_code': resp.status_code})
-                data['error'] = 'unexpected-status'
-                return data
-
-            content_type = resp.headers.get('Content-Type')
-            data['content_type'] = content_type
-            if content_type:
-                content_type = content_type.strip()
-                if ';' in content_type:
-                    content_type = content_type.split(';', 1)[0].strip()
-
-            if content_type != 'application/json':
-                data['warnings'].append('wrong-content-type')
-
-            content_length = resp.headers.get('Content-Length')
-            data['content_length'] = content_length
-            try:
-                if content_length and int(content_length) > GPC_MAX_CONTENT_LENGTH:
-                    data['error'] = 'content-length-too-long'
-                    return data
-
-            except ValueError:
-                # If the Content-Length header isn't valid, we'll check the length ourselves.
-                pass
-
-            # Read up to GPC_MAX_CONTENT_LENGTH bytes of content.
-            content = resp.raw.read(amt=GPC_MAX_CONTENT_LENGTH, decode_content=True)
-            # Read up to 1kB to check if the content is longer than GPC_MAX_CONTENT_LENGTH.
-            # Reading with decode_content on could produce `b''` even if bytes have been read if the
-            # stream is compressed. Reading a 1kB chunk makes this less likely. See:
-            # https://github.com/urllib3/urllib3/issues/437
-            extra_content = resp.raw.read(amt=1024, decode_content=True)
-            if extra_content:
-                data['error'] = 'content-too-long'
-                return data
-
-            # We've read the content, so safe to close the connection.
-
-    except (requests.exceptions.RequestException,
-            urllib3.exceptions.HTTPError,
-            # UnicodeError can be raised if the server redirects incorrectly, e.g.
-            # https://quickconnect.to/.well-known/gpc.json redirects to
-            # https://.well-known.quickconnect.to/https_first/gpc.json, which has an empty first label in
-            # the domain, causing the exception.
-            UnicodeError) as e:
-
-        # These exceptions are run of the mill, so don't bother logging them.
-        expected_exceptions = (requests.exceptions.ConnectionError,
-                               requests.exceptions.Timeout,
-                               requests.exceptions.TooManyRedirects)
-        if not isinstance(e, expected_exceptions):
-            e_type = type(e)
-            log.warning('Error when fetching gpc.json for %(domain)s: %(error)s',
-                        {'domain': domain, 'error': e,
-                         'exceptionType': e_type.__module__ + '.' + e_type.__name__})
-
-        raise ScanError('gpc_error')
-
-    try:
-        resp_json = json.loads(content)
-    except ValueError:
-        data['error'] = 'parse-error'
-        return data
-
-    if not isinstance(resp_json, dict):
-        data['error'] = 'not-json-object'
-        return data
-
-    if 'lastUpdate' in resp_json:
-        last_update = resp_json['lastUpdate']
-        if isinstance(last_update, str):
-            try:
-                data['last_update_dt'] = rfc3339.parse_datetime(last_update)
-            except ValueError:
-                try:
-                    data['last_update_d'] = rfc3339.parse_date(last_update)
-                except ValueError:
-                    data['warnings'].append('invalid-update-field')
-        else:
-            data['warnings'].append('invalid-update-field')
-    else:
-        data['warnings'].append('missing-update-field')
-
-    if 'gpc' not in resp_json or not isinstance(resp_json['gpc'], bool):
-        data['error'] = 'invalid-gpc-field'
-        return data
-
-    data['supports_gpc'] = resp_json['gpc']
-
-    return data
-
-
-def scan_site(domain, scheme='https'):
-    try:
-        robots = Robots.fetch(f'{scheme}://{domain}/robots.txt',
-                              max_size=ROBOTS_MAX_CONTENT_LENGTH,
-                              headers=SCAN_HEADERS,
-                              timeout=REQUEST_TIMEOUT_INDIVIDUAL)
-
-        if not robots.allowed(GPC_PATH, SCAN_AGENT):
-            log.info('Scanning blocked by robots.txt for %(domain)s.',
-                     {'domain': domain})
-            raise ScanError('gpc_blocked', scheme=scheme)
-
-    except (reppy.exceptions.ReppyException, urllib3.exceptions.HTTPError):
-        # Assume there's no robots.txt if we run into an error.
-        # If there's actually something wrong with the domain/server we should encounter the same
-        # error when trying to fetch gpc.json.
-        pass
-
-    except ValueError as e:
-        # Probably something wrong with the robots.txt file.
-        # Assume we're allowed to scan since we don't have a valid file telling us not to.
-        # Log and proceed.
-        log.warning('Error when parsing robots.txt for %(scheme)s://%(domain)s: %(error)s',
-                    {'scheme': scheme, 'domain': domain, 'error': e, 'exceptionType': 'ValueError'})
-
-    return scan_gpc(domain, scheme=scheme)
-
-
-def scan_site_cross_scheme(domain):
-    try:
-        # Some sites have weak SSL configurations that aren't supported with the default SSL
-        # security level 2. Relax to security level 1 to allow them to be scanned regardless.
-        with relax_requests_ssl():
-            return scan_site(domain, scheme='https')
-
-    except ScanError as e:
-        if e.template == 'gpc_error':
-            # HTTPS failed - try again with HTTP
-            return scan_site(domain, scheme='http')
-        else:
-            raise
-
-
-def construct_app(es_dao, parallel_scans, testing_mode, **kwargs):
+def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
 
     app = Bottle()
     app.default_error_handler = html_default_error_hander
 
     app.install(security_headers)
-
-    # Scans are run in a limited size pool to avoid flooding a process with a lot of parallel scans.
-    scan_pool = Pool(parallel_scans)
 
     @app.get('/-/live')
     def live():
@@ -407,10 +188,10 @@ def construct_app(es_dao, parallel_scans, testing_mode, **kwargs):
             if not check_domain(domain):
                 domain = None
 
-        scanned_count, support_counts = es_dao.count(www_redirect=False, timeout=30)
+        scanned_count, supporting_count = es_dao.count(timeout=30)
 
         r = template('index', domain=domain,
-                     scanned_count=scanned_count, supporting_count=support_counts[1])
+                     scanned_count=scanned_count, supporting_count=supporting_count)
         set_headers(r, STATIC_FILE_HEADERS)
         return r
 
@@ -429,71 +210,22 @@ def construct_app(es_dao, parallel_scans, testing_mode, **kwargs):
         if not check_domain(domain):
             return template('gpc_invalid', domain=domain)
 
-        site = es_dao.get(domain)
-        if site is not None:
+        result = es_dao.get(domain)
+        if result is not None:
             if params['no_rescan']:
                 redirect(f'/sites/{domain}')
 
-            update_dt = rfc3339.parse_datetime(site['update_dt'])
+            last_scan_dt = rfc3339.parse_datetime(result['last_scan_dt'])
             # If the last scan hasn't expired yet, don't rescan.
-            if rfc3339.now() < update_dt + SCAN_TTL:
+            if rfc3339.now() < last_scan_dt + SCAN_TTL:
                 if testing_mode:
                     log.info('Would have redirected to existing scan for %(domain)s if on prod.',
                              {'domain': domain})
                 else:
                     redirect(f'/sites/{domain}')
 
-        # Need to wait for a slot to be available in the scan pool.
-        slots = scan_pool.wait_available(SCAN_START_TIMEOUT)
-        if slots < 1:
-            # Server is overloaded - caller needs to try again later.
-            abort(503)
-
-        now = rfc3339.now()
-        try:
-            # A scan makes multiple requests, each with their own timeouts.
-            # The requests library doesn't always obey its timeout either -
-            # e.g. https://crwdcntrl.net/ seems to take 5-6x the specified timeout.
-            # Perform the whole scan in a greenlet so we can use a timeout on the whole thing.
-            gl = scan_pool.spawn(scan_site_cross_scheme, domain)
-            scan_data = gl.get(block=True, timeout=SCAN_TIMEOUT)
-
-        except ScanError as e:
-            return template(e.template, domain=domain, **e.kwargs)
-
-        except gevent.Timeout:
-            return template('gpc_error', domain=domain)
-
-        next_scan_dt = now + NEXT_SCAN_OFFSET
-        es_dao.upsert(domain, scan_data, next_scan_dt, timeout=30)
-
-        redirect_domain = scan_data.get('redirect_domain')
-        if redirect_domain and check_domain(redirect_domain):
-            # Check the redirect domain as well to make sure its in our data set.
-            # This is particularly important for www redirect domains, as we use them as the
-            # canonical domain.
-
-            # Does a scan and updates the DB, just like we've just done, but with different error
-            # handling since we're not going to wait for it before responding to the request.
-            def check():
-                now = rfc3339.now()
-                try:
-                    scan_data = scan_site_cross_scheme(redirect_domain)
-
-                    next_scan_dt = now + NEXT_SCAN_OFFSET
-                    es_dao.upsert(redirect_domain, scan_data, next_scan_dt, timeout=30)
-
-                except ScanError:
-                    # No need to log this - if the error was notable it'll already have been logged
-                    # when the ScanError was raised.
-                    pass
-
-                except Exception:
-                    log.exception('Exception while scanning redirect domain %(redirect_domain)s',
-                                  {'redirect_domain': redirect_domain})
-
-            # Check the redirect domain in a greenlet. It can run in the background.
-            gevent.spawn(check)
+        r = requests.post(well_known_sites_endpoint, data={'domain': domain, 'rescan': 'true'})
+        r.raise_for_status()
 
         redirect(f'/sites/{domain}')
 
@@ -504,9 +236,9 @@ def construct_app(es_dao, parallel_scans, testing_mode, **kwargs):
         page = params['page']
         offset = page * SITES_PAGE_SIZE
 
-        total, sites = es_dao.find(supports_gpc=True, www_redirect=False,
-                                   sort=['id'], offset=offset, limit=SITES_PAGE_SIZE, timeout=30)
-        domains = [site[0]['domain'] for site in sites]
+        total, results = es_dao.find(supports_gpc=True, www_redirect=False, is_base_domain=True,
+                                     sort=['id'], offset=offset, limit=SITES_PAGE_SIZE, timeout=30)
+        domains = [result[0]['domain'] for result in results]
 
         previous_page = page - 1 if page > 0 else None
         next_page = page + 1
@@ -522,44 +254,66 @@ def construct_app(es_dao, parallel_scans, testing_mode, **kwargs):
         if not check_domain(domain):
             return template('gpc_invalid', domain=domain)
 
-        site = es_dao.get(domain)
-        if site is None:
+        result = es_dao.get(domain)
+        if result is None:
             redirect(f'/?domain={domain}')
 
-        scan_data = site['scan_data']
+        status = result['status']
+        scan_data = result.get('scan_data')
+        if status == 'pending':
+            return template('gpc_pending', domain=domain)
+        elif status == 'blocked':
+            return template('gpc_blocked', domain=domain)
+        elif status == 'failed' and not scan_data:
+            return template('gpc_error', domain=domain)
 
-        # Older scans were all HTTPS, so didn't record the scheme.
-        scheme = scan_data.get('scheme') or 'https'
+        # Status should be `ok`, or `failed` but with a previously successful scan.
+        # In either case, `scan_data` should be present.
+        assert scan_data
+
+        scheme = scan_data['scheme']
 
         # If the site redirected to (or from) a www subdomain during the scan, show the user the
         # redirected domain instead of the original - presumably that's the one they should use.
         if scan_data.get('www_redirect'):
             domain = scan_data['redirect_domain']
 
-        update_dt = rfc3339.parse_datetime(site['update_dt'])
-        can_rescan = (update_dt + SCAN_TTL) < rfc3339.now()
+        scan_dt = rfc3339.parse_datetime(result['scan_dt'])
+
+        if result['scan_priority'] == 0:
+            rescan_queued = True
+            can_rescan = False
+        else:
+            rescan_queued = False
+            last_scan_dt = rfc3339.parse_datetime(result['last_scan_dt'])
+            can_rescan = (last_scan_dt + SCAN_TTL) < rfc3339.now()
 
         error = scan_data.get('error')
         if error:
             message = None
             if error == 'not-found':
                 message = 'The GPC support resource was not found.'
-            elif error in ('unexpected-scheme-redirect', 'bad-status', 'bad-redirect',
+            elif error in ('unexpected-scheme-redirect', 'unexpected-status',
                            'client-error', 'server-error', 'unexpected-status'):
                 message = 'Server responded unexpectedly when fetching the GPC support resource.'
-            elif error in ('parse-error', 'not-json-object', 'invalid-gpc-field',
-                           'content-too-long', 'content-length-too-long'):
+            elif error in ('parse-error', 'json-parse-error', 'unexpected-json-root-type',
+                           'content-too-long', 'content-length-too-long', 'bad-content'):
                 message = 'The GPC support resource is invalid.'
             elif error:
                 log.error('Unsupported GPC scan error %(error)s', {'error': error})
 
             r = template('gpc_unknown', scheme=scheme, domain=domain,
-                         message=message, update_dt=update_dt, can_rescan=can_rescan)
+                         message=message, scan_dt=scan_dt,
+                         rescan_queued=rescan_queued, can_rescan=can_rescan)
             set_headers(r, SCAN_RESULT_HEADERS)
             return r
 
         else:
-            warnings = scan_data.get('warnings')
+            assert scan_data['found'], 'gpc.json should have been found if no error.'
+            gpc_data = scan_data['gpc']
+
+            warnings = scan_data.get('warnings') or []
+            warnings += gpc_data.get('warning_codes') or []
             message = None
             if warnings:
                 message_parts = []
@@ -574,9 +328,10 @@ def construct_app(es_dao, parallel_scans, testing_mode, **kwargs):
                 if message_parts:
                     message = ' and '.join(message_parts) + '.'
 
-            template_name = 'gpc_supported' if scan_data['supports_gpc'] else 'gpc_unsupported'
+            template_name = 'gpc_supported' if gpc_data['parsed']['gpc'] else 'gpc_unsupported'
             r = template(template_name, scheme=scheme, domain=domain,
-                         message=message, update_dt=update_dt, can_rescan=can_rescan)
+                         message=message, scan_dt=scan_dt,
+                         rescan_queued=rescan_queued, can_rescan=can_rescan)
             set_headers(r, SCAN_RESULT_HEADERS)
             return r
 
@@ -618,105 +373,3 @@ def run_twitter_worker(es_dao,
 
         else:
             time.sleep(60)
-
-
-def run_rescan_worker(es_dao, parallel_scans, batch_size, **kwargs):
-
-    def scan_domain(domain, scan_fails, wait_for=False):
-        try:
-            # A scan makes multiple requests, each with their own timeouts.
-            # The requests library doesn't always obey its timeout either -
-            # e.g. https://crwdcntrl.net/ seems to take 5-6x the specified timeout.
-            # Use gevent to add a limit to the overall time taken.
-            scan_data = gevent.with_timeout(SCAN_TIMEOUT, scan_site_cross_scheme, domain)
-
-            next_scan_dt = now + NEXT_SCAN_OFFSET
-            es_dao.upsert(domain, scan_data, next_scan_dt, timeout=30, wait_for=wait_for)
-
-        except (ScanError, gevent.Timeout):
-
-            if scan_fails < len(SCAN_FAIL_OFFSETS):
-                next_scan_dt = now + SCAN_FAIL_OFFSETS[scan_fails]
-            else:
-                next_scan_dt = now + SCAN_FAIL_OFFSETS[-1]
-
-            es_dao.set_scan_failed(domain, next_scan_dt, timeout=30, wait_for=wait_for)
-
-    gevent_pool = Pool(parallel_scans)
-    while True:
-        now = rfc3339.now()
-
-        domains = es_dao.find_rescanable(limit=batch_size)
-        if domains:
-            greenlets = []
-            for domain, scan_fails in domains:
-                # Wait for indexing on the last update so we don't pick up the same domains again.
-                wait_for = domain == domains[-1][0]
-                greenlet = gevent_pool.spawn(scan_domain, domain, scan_fails, wait_for=wait_for)
-                greenlets.append(greenlet)
-
-            gevent.joinall(greenlets, raise_error=True)
-
-        else:
-            time.sleep(10)
-
-
-def run_scan(server, rescan, parallel_scans, skip, **kwargs):
-    gevent_pool = Pool(parallel_scans)
-
-    count = 0
-    start_s = time.monotonic()
-    block_start_s = time.monotonic()
-    block_size = 100
-
-    def scan_domain(domain):
-        log.debug('Scanning %(domain)s.', {'domain': domain})
-        # Don't follow redirects on successful scan to avoid unnecesary load on the server.
-        resp = requests.post(server, data={'domain': domain, 'no_rescan': not rescan},
-                             allow_redirects=False)
-
-        # 200 if the domain couldn't be scanned, 303 for redirects to scan results.
-        if resp.status_code not in (200, 303):
-            log.error('Unexpected status when scanning %(domain)s: %(status_code)s',
-                      {'domain': domain, 'status_code': resp.status_code})
-            raise SystemExit('Unexpected status, aborting.')
-
-        log.debug('Scanned %(domain)s.', {'domain': domain})
-
-        nonlocal count, block_start_s
-        count += 1
-        if count % block_size == 0:
-            block_end_s = time.monotonic()
-            rate = block_size / (block_end_s - block_start_s)
-            log.info('Scanned %(count)s domains. Rate %(rate).2f/s',
-                     {'count': count, 'rate': rate})
-            block_start_s = block_end_s
-
-        return True
-
-    try:
-        for line in sys.stdin:
-
-            # Skip empty lines
-            line = line.strip()
-            if not line:
-                continue
-
-            domain = normalise_domain(line)
-            if not check_domain(domain):
-                log.warning('Skipping invalid domain %(domain)s.',
-                            {'domain': domain})
-                continue
-
-            if skip > 0:
-                log.debug('Skipping domain %(domain)s.', {'domain': domain})
-                skip -= 1
-                continue
-
-            gevent_pool.spawn(scan_domain, domain)
-
-        gevent_pool.join()
-
-    finally:
-        rate = count / (time.monotonic() - start_s)
-        log.info('Scanned %(count)s domains. Rate %(rate).2f/s', {'count': count, 'rate': rate})

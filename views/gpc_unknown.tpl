@@ -20,15 +20,15 @@ rebase('base.tpl', title=f'GPC support unknown for {domain}',
         </a>
       </p>
       % if defined('message') and message:
-      <p>
-        {{message}}
-      </p>
+      <p>{{message}}</p>
       % end
       <p class="subInfo">
         % from rfc3339 import datetimetostr
-        Checked <span id="updateDateTime">{{datetimetostr(update_dt)}}</span>
+        Checked <span id="updateDateTime">{{datetimetostr(scan_dt)}}</span>
       </p>
-      % if get('can_rescan'):
+      % if rescan_queued:
+      <p>Recheck queued.</p>
+      % elif can_rescan:
       <form action="/" method="POST">
         <input type="hidden" name="domain" value="{{domain}}">
         <button>Recheck</button>
