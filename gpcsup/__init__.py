@@ -341,7 +341,7 @@ def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
 def run_twitter_worker(es_dao,
                        twitter_consumer_key, twitter_consumer_secret,
                        twitter_token_key, twitter_token_secret,
-                       **kwargs):
+                       testing_mode, **kwargs):
 
     oauth = OAuth1(client_key=twitter_consumer_key,
                    client_secret=twitter_consumer_secret,
@@ -353,23 +353,27 @@ def run_twitter_worker(es_dao,
 
         if domains:
             for domain in domains:
-                es_dao.set_tweeting(domain, wait_for=True)
+                if testing_mode:
+                    log.info('Would tweet about `%(domain)s` supporting GPC.',
+                             {'domain': domain})
+                else:
+                    es_dao.set_tweeting(domain, wait_for=True)
 
-                tweet = f'{domain} is reporting that it supports #GPC'
-                r = requests.post('https://api.twitter.com/1.1/statuses/update.json',
-                                  data={'status': tweet},
-                                  auth=oauth)
-                r.raise_for_status()
+                    tweet = f'{domain} is reporting that it supports #GPC'
+                    r = requests.post('https://api.twitter.com/1.1/statuses/update.json',
+                                      data={'status': tweet},
+                                      auth=oauth)
+                    r.raise_for_status()
 
-                r_json = r.json()
-                tweet_id = r_json['id_str']
+                    r_json = r.json()
+                    tweet_id = r_json['id_str']
 
-                log.info('Tweeted about `%(domain)s` supporting GPC. Tweet ID: `%(tweet_id)s`',
-                         {'domain': domain,
-                          'tweet_id': tweet_id,
-                          'full_response': r_json})
+                    log.info('Tweeted about `%(domain)s` supporting GPC. Tweet ID: `%(tweet_id)s`',
+                             {'domain': domain,
+                              'tweet_id': tweet_id,
+                              'full_response': r_json})
 
-                es_dao.set_tweeted(domain, wait_for=True)
+                    es_dao.set_tweeted(domain, wait_for=True)
 
         else:
             time.sleep(60)

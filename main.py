@@ -112,6 +112,8 @@ def server(**options):
                    '(default: localhost)')
 @click.option('--es-scan-result-index', default='well-known-scan',
               help='Elasticsearch scan result index. (default=well-known-scan)')
+@click.option('--testing-mode', default=False, is_flag=True,
+              help='Change settings to simplify testing, e.g. don\'t send tweets.')
 @click.option('--json', '-j', default=False, is_flag=True,
               help='Log in json.')
 @click.option('--verbose', '-v', default=False, is_flag=True,
