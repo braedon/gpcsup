@@ -322,15 +322,14 @@ def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
                         message_parts.append('incorrect content type')
                     elif warning == 'invalid-update-field':
                         message_parts.append('invalid last update field')
-                    elif warning == 'missing-update-field':
-                        message_parts.append('missing last update field')
 
                 if message_parts:
                     message = ' and '.join(message_parts) + '.'
 
+            last_update = gpc_data['parsed'].get('lastUpdate')
             template_name = 'gpc_supported' if gpc_data['parsed']['gpc'] else 'gpc_unsupported'
             r = template(template_name, scheme=scheme, domain=domain,
-                         message=message, scan_dt=scan_dt,
+                         last_update=last_update, message=message, scan_dt=scan_dt,
                          rescan_queued=rescan_queued, can_rescan=can_rescan)
             set_headers(r, SCAN_RESULT_HEADERS)
             return r

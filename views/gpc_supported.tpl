@@ -19,6 +19,7 @@ rebase('base.tpl', title=f'GPC supported by {domain}',
           Global Privacy Control
         </a>
       </p>
+      <p>Last Update: {{last_update or 'Unspecified'}}</p>
       % if defined('message') and message:
       <p>
         However, its GPC support resource doesn't follow the
