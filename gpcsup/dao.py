@@ -141,7 +141,6 @@ class GpcSupDao(object):
         # Only count completed scans.
         s = s.filter('terms', **{'status.keyword': ['ok', 'failed']})
         # Only count base domains.
-        s = s.exclude('exists', field='scan_data.www_redirect')
         s = s.filter('term', **{'is_base_domain': True})
 
         # Don't need any actual results - just the count and aggregations.
@@ -171,9 +170,6 @@ class GpcSupDao(object):
         s = s.filter('term', **{'status.keyword': 'ok'})
         s = s.filter('term', **{'scan_data.found': True})
         s = s.filter('term', **{'scan_data.gpc.parsed.gpc': True})
-        # Don't tweet about sites that redirect from/to a www subdomain.
-        # We should tweet about the version that is redirected to instead.
-        s = s.exclude('exists', field='scan_data.www_redirect')
         # Only tweet about base domains, not subdomains.
         s = s.filter('term', **{'is_base_domain': True})
         # Don't tweet about sites we're previously tweeted about (or may have).

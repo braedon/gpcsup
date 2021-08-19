@@ -1,3 +1,4 @@
+import functools
 import idna
 import logging
 import re
@@ -7,6 +8,7 @@ import time
 
 from bottle import Bottle, request, response, static_file, template, redirect
 from datetime import timedelta
+from publicsuffixlist import PublicSuffixList
 from requests_oauthlib import OAuth1
 from urllib.parse import urlsplit
 
@@ -21,6 +23,9 @@ log = logging.getLogger(__name__)
 # Disable some logging to reduce log spam.
 # Elasticsearch logs all requests at (at least) INFO level.
 logging.getLogger('elasticsearch').setLevel(logging.WARNING)
+
+PSL_CACHE_SIZE = 10_000
+psl = PublicSuffixList()
 
 # Domains are a series of two or more names, separated by periods, with an optional trailing period.
 # (Technically one name is allowed, but TLDs aren't usually HTTP sites.)
@@ -67,6 +72,20 @@ class ScanError(Exception):
     def __init__(self, template, **kwargs):
         self.template = template
         self.kwargs = kwargs
+
+
+@functools.lru_cache(maxsize=PSL_CACHE_SIZE)
+def extract_base_domain(domain, return_unknown=True):
+    base_domain = psl.privatesuffix(domain)
+    # If return_unknown is set, return the domain if its eTLD isn't known.
+    if base_domain is None and return_unknown:
+        base_domain = domain
+    return base_domain
+
+
+def domain_is_www_subdomain(domain):
+    base_domain = extract_base_domain(domain)
+    return domain == f'www.{base_domain}'
 
 
 def normalise_domain(domain):
@@ -236,7 +255,7 @@ def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
         page = params['page']
         offset = page * SITES_PAGE_SIZE
 
-        total, results = es_dao.find(supports_gpc=True, www_redirect=False, is_base_domain=True,
+        total, results = es_dao.find(supports_gpc=True, is_base_domain=True,
                                      sort=['id'], offset=offset, limit=SITES_PAGE_SIZE, timeout=30)
         domains = [result[0]['domain'] for result in results]
 
@@ -253,6 +272,11 @@ def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
         domain = normalise_domain(domain)
         if not check_domain(domain):
             return template('gpc_invalid', domain=domain)
+
+        # Well-Known doesn't scan www subdomains - redirect to the base domain instead.
+        if domain_is_www_subdomain(domain):
+            base_domain = extract_base_domain(domain)
+            redirect(f'/sites/{base_domain}')
 
         result = es_dao.get(domain)
         if result is None:
@@ -272,11 +296,6 @@ def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
         assert scan_data
 
         scheme = scan_data['scheme']
-
-        # If the site redirected to (or from) a www subdomain during the scan, show the user the
-        # redirected domain instead of the original - presumably that's the one they should use.
-        if scan_data.get('www_redirect'):
-            domain = scan_data['redirect_domain']
 
         scan_dt = rfc3339.parse_datetime(result['scan_dt'])
 
