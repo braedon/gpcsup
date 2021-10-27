@@ -231,9 +231,10 @@ def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
 
         result = es_dao.get(domain)
         if result is not None:
-            if params['no_rescan']:
+            if params['no_rescan'] or result['status'] == 'pending':
                 redirect(f'/sites/{domain}')
 
+            # Non-pending scans should have a scan datetime.
             last_scan_dt = rfc3339.parse_datetime(result['last_scan_dt'])
             # If the last scan hasn't expired yet, don't rescan.
             if rfc3339.now() < last_scan_dt + SCAN_TTL:
