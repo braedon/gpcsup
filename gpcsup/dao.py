@@ -61,9 +61,10 @@ def build_sort(sort, dict_form=False):
 
 class GpcSupDao(object):
 
-    def __init__(self, es_client, scan_result_index):
+    def __init__(self, es_client, site_index, resource_index):
         self.es_client = es_client
-        self.scan_result_index = scan_result_index
+        self.site_index = site_index
+        self.resource_index = resource_index
 
     def set_tweeting(self, domain, timeout=30, wait_for=False):
         body = {
@@ -79,7 +80,7 @@ class GpcSupDao(object):
                 'lang': 'painless'
             }
         }
-        self.es_client.update(index=self.scan_result_index, id=doc_id(domain), body=body,
+        self.es_client.update(index=self.resource_index, id=doc_id(domain), body=body,
                               request_timeout=timeout, refresh='wait_for' if wait_for else 'false')
 
     def set_tweeted(self, domain, timeout=30, wait_for=False):
@@ -96,22 +97,40 @@ class GpcSupDao(object):
                 }
             }
         }
-        self.es_client.update(index=self.scan_result_index, id=doc_id(domain), body=body,
+        self.es_client.update(index=self.resource_index, id=doc_id(domain), body=body,
                               request_timeout=timeout, refresh='wait_for' if wait_for else 'false')
 
     def get(self, domain, timeout=30):
-        resp = self.es_client.get(index=self.scan_result_index, id=doc_id(domain),
-                                  request_timeout=timeout, ignore=404)
-        if resp['found']:
-            return resp['_source']
-        else:
+
+        site_resp = self.es_client.get(index=self.site_index, id=domain,
+                                       request_timeout=timeout, ignore=404)
+        if not site_resp['found']:
             return None
+
+        site_doc = site_resp['_source']
+
+        resource_resp = self.es_client.get(index=self.resource_index, id=doc_id(domain),
+                                           request_timeout=timeout, ignore=404)
+        if resource_resp['found']:
+            resource_doc = resource_resp['_source']
+
+        else:
+            scan_results = {r['resource']: r for r in site_doc['results']}
+            if 'gpc' not in scan_results:
+                return None
+            # Not the full resource doc, but will do for our purposes.
+            resource_doc = scan_results['gpc']
+
+        # Drop results for other resources.
+        del site_doc['results']
+
+        return {**site_doc, **resource_doc}
 
     def find(self,
              sort=None, offset=0, limit=10,
              count=False, timeout=30, **filter_params):
 
-        s = Search(using=self.es_client, index=self.scan_result_index)
+        s = Search(using=self.es_client, index=self.resource_index)
         s = s.filter('term', **{'resource.keyword': 'gpc'})
 
         s = apply_filters(s, **filter_params)
@@ -135,7 +154,7 @@ class GpcSupDao(object):
 
     def count(self, timeout=30):
 
-        s = Search(using=self.es_client, index=self.scan_result_index)
+        s = Search(using=self.es_client, index=self.resource_index)
         s = s.filter('term', **{'resource.keyword': 'gpc'})
 
         # Only count completed scans.
@@ -162,7 +181,7 @@ class GpcSupDao(object):
 
     def find_tweetable(self, limit=10, timeout=30):
 
-        s = Search(using=self.es_client, index=self.scan_result_index)
+        s = Search(using=self.es_client, index=self.resource_index)
         s = s.filter('term', **{'resource.keyword': 'gpc'})
 
         # Only tweet about sites where the last scan succeded, a gpc.json was

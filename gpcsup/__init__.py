@@ -298,7 +298,7 @@ def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
 
         scheme = scan_data['scheme']
 
-        scan_dt = rfc3339.parse_datetime(result['scan_dt'])
+        scan_dt = rfc3339.parse_datetime(scan_data['scan_dt'])
 
         if result['scan_priority'] == 0:
             rescan_queued = True

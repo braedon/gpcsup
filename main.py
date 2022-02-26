@@ -40,8 +40,10 @@ def main():
                    'Specify multiple nodes by providing the option multiple times. '
                    'A port can be provided if non-standard (9200) e.g. es1:9999. '
                    '(default: localhost)')
-@click.option('--es-scan-result-index', default='well-known-scan',
-              help='Elasticsearch scan result index. (default=well-known-scan)')
+@click.option('--es-site-index', default='well-known-site',
+              help='Elasticsearch site index. (default=well-known-site)')
+@click.option('--es-resource-index', default='well-known-resource',
+              help='Elasticsearch resource index. (default=well-known-resource)')
 @click.option('--well-known-sites-endpoint', default='http://localhost:8080/sites/',
               help='Well-Known instance sites endpoint. (default=http://localhost:8080/sites/)')
 @click.option('--port', '-p', default=8080,
@@ -83,7 +85,7 @@ def server(**options):
     configure_logging(json=options['json'], verbose=options['verbose'])
 
     es_client = Elasticsearch(options['es_node'], verify_certs=False)
-    es_dao = GpcSupDao(es_client, options['es_scan_result_index'])
+    es_dao = GpcSupDao(es_client, options['es_site_index'], options['es_resource_index'])
 
     app = construct_app(es_dao, **options)
     app = wsgi_log_middleware(app)
@@ -110,8 +112,10 @@ def server(**options):
                    'Specify multiple nodes by providing the option multiple times. '
                    'A port can be provided if non-standard (9200) e.g. es1:9999. '
                    '(default: localhost)')
-@click.option('--es-scan-result-index', default='well-known-scan',
-              help='Elasticsearch scan result index. (default=well-known-scan)')
+@click.option('--es-site-index', default='well-known-site',
+              help='Elasticsearch site index. (default=well-known-site)')
+@click.option('--es-resource-index', default='well-known-resource',
+              help='Elasticsearch resource index. (default=well-known-resource)')
 @click.option('--testing-mode', default=False, is_flag=True,
               help='Change settings to simplify testing, e.g. don\'t send tweets.')
 @click.option('--json', '-j', default=False, is_flag=True,
@@ -124,7 +128,7 @@ def twitter_worker(**options):
     configure_logging(json=options['json'], verbose=options['verbose'])
 
     es_client = Elasticsearch(options['es_node'], verify_certs=False)
-    es_dao = GpcSupDao(es_client, options['es_scan_result_index'])
+    es_dao = GpcSupDao(es_client, options['es_site_index'], options['es_resource_index'])
 
     with nice_shutdown():
         run_twitter_worker(es_dao, **options)
