@@ -114,15 +114,29 @@ class GpcSupDao(object):
         if resource_resp['found']:
             resource_doc = resource_resp['_source']
 
-        else:
-            scan_results = {r['resource']: r for r in site_doc['results']}
-            if 'gpc' not in scan_results:
-                return None
-            # Not the full resource doc, but will do for our purposes.
-            resource_doc = scan_results['gpc']
+            # Don't need any site doc resource results.
+            del site_doc['results']
 
-        # Drop results for other resources.
-        del site_doc['results']
+        else:
+
+            if site_doc['status'] == 'pending':
+                # Initial scan is pending, so no resource results yet.
+                # Don't return None as that indicates the site hasn't been scanned.
+                # Callers should handle pending scans differently.
+                resource_doc = {}
+
+            else:
+                # Scan has completed at least once, so extract last results.
+                scan_results = {r['resource']: r for r in site_doc['results']}
+                # GPC might not have been checked last scan in certain cases.
+                # Treat as if the site hasn't been scanned.
+                if 'gpc' not in scan_results:
+                    return None
+                # Not the full resource doc, but will do for our purposes.
+                resource_doc = scan_results['gpc']
+
+                # Drop results for other resources.
+                del site_doc['results']
 
         return {**site_doc, **resource_doc}
 
