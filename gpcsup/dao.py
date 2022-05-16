@@ -166,7 +166,26 @@ class GpcSupDao(object):
 
         return response.hits.total.value, sites
 
-    def count(self, timeout=30):
+    def count_scanned(self, timeout=30):
+
+        s = Search(using=self.es_client, index=self.site_index)
+        s = s.filter('term', **{'results.resource.keyword': 'gpc'})
+
+        # Only count completed scans.
+        s = s.filter('term', **{'status.keyword': 'scanned'})
+        # Only count base domains.
+        s = s.filter('term', **{'is_base_domain': True})
+
+        # Don't need any actual results - just the count.
+        s = s[0:0]
+        s = s.extra(track_total_hits=True)
+        s = s.params(request_timeout=timeout)
+
+        response = s.execute()
+
+        return response.hits.total.value
+
+    def count_supporting(self, timeout=30):
 
         s = Search(using=self.es_client, index=self.resource_index)
         s = s.filter('term', **{'resource.keyword': 'gpc'})
@@ -175,23 +194,18 @@ class GpcSupDao(object):
         s = s.filter('terms', **{'status.keyword': ['ok', 'failed']})
         # Only count base domains.
         s = s.filter('term', **{'is_base_domain': True})
+        # Only count sites that report support.
+        s = s.filter('term', **{'scan_data.found': True})
+        s = s.filter('term', **{'scan_data.gpc.parsed.gpc': True})
 
-        # Don't need any actual results - just the count and aggregations.
+        # Don't need any actual results - just the count.
         s = s[0:0]
-
-        # Use aggregation to count subset that reports support.
-        supporting_filters = [{'term': {'scan_data.found': True}},
-                              {'term': {'scan_data.gpc.parsed.gpc': True}}]
-        s.aggs.bucket('supporting', 'filter', bool={'filter': supporting_filters})
-
         s = s.extra(track_total_hits=True)
         s = s.params(request_timeout=timeout)
 
         response = s.execute()
 
-        supporting_count = response.aggregations.supporting.doc_count
-
-        return response.hits.total.value, supporting_count
+        return response.hits.total.value
 
     def find_tweetable(self, limit=10, timeout=30):
 

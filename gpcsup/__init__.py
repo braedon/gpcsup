@@ -1,4 +1,5 @@
 import functools
+import gevent
 import idna
 import logging
 import re
@@ -207,7 +208,12 @@ def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
             if not check_domain(domain):
                 domain = None
 
-        scanned_count, supporting_count = es_dao.count(timeout=30)
+        scanned_count_gl = gevent.spawn(es_dao.count_scanned, timeout=30)
+        supporting_count_gl = gevent.spawn(es_dao.count_supporting, timeout=30)
+
+        gevent.joinall([scanned_count_gl, supporting_count_gl], timeout=30)
+        scanned_count = scanned_count_gl.get()
+        supporting_count = supporting_count_gl.get()
 
         r = template('index', domain=domain,
                      scanned_count=scanned_count, supporting_count=supporting_count)
