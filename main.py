@@ -35,6 +35,19 @@ def main():
 
 
 @click.command()
+@click.option('--service-protocol', type=click.Choice(('https', 'http')),
+              default='https',
+              help='The protocol for the public service. (default=https)')
+@click.option('--service-hostname', default='localhost',
+              help='The hostname for the public service. (default=localhost)')
+@click.option('--service-port', default='',
+              help='The port for the public service, if non standard.')
+@click.option('--service-path', default='',
+              help='The path prefix for the public service, if any.'
+                   'Should start with a "/", but not end with one.')
+@click.option('--well-known-service', default='http://localhost:8080',
+              help='Well-Known service url. Should not end with a "/". '
+                   '(default=http://localhost:8080)')
 @click.option('--es-node', '-e', default=['localhost'], multiple=True,
               help='Address of a node in a Elasticsearch cluster to use. '
                    'Specify multiple nodes by providing the option multiple times. '
@@ -44,8 +57,6 @@ def main():
               help='Elasticsearch site index. (default=well-known-site)')
 @click.option('--es-resource-index', default='well-known-resource',
               help='Elasticsearch resource index. (default=well-known-resource)')
-@click.option('--well-known-sites-endpoint', default='http://localhost:8080/sites/',
-              help='Well-Known instance sites endpoint. (default=http://localhost:8080/sites/)')
 @click.option('--port', '-p', default=8080,
               help='Port to serve on (default=8080).')
 @click.option('--shutdown-sleep', default=10,

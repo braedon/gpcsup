@@ -4,8 +4,10 @@ from elasticsearch_dsl import Search
 
 
 SITE_SORTABLE_FIELDS = {
-    'id': 'domain.keyword',
-    '-id': '-domain.keyword',
+    'domain': 'domain.keyword',
+    '-domain': '-domain.keyword',
+    'rank': 'domain_rank.rank',
+    '-rank': '-domain_rank.rank',
 }
 
 
@@ -142,7 +144,8 @@ class GpcSupDao(object):
 
     def find(self,
              sort=None, offset=0, limit=10,
-             count=False, timeout=30, **filter_params):
+             source=None, count=False, timeout=30,
+             **filter_params):
 
         s = Search(using=self.es_client, index=self.resource_index)
         s = s.filter('term', **{'resource.keyword': 'gpc'})
@@ -154,6 +157,9 @@ class GpcSupDao(object):
             s = s.sort(*sort)
 
         s = s[offset:offset + limit]
+
+        if source:
+            s = s.source(source)
 
         s = s.params(request_timeout=timeout)
 

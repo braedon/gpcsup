@@ -31,7 +31,7 @@ rebase('base.tpl', title='Check a site', open_graph=True,
   % if supporting_count:
   <footer>
     <p>{{ f'{scanned_count:,}' }} sites scanned</p>
-    <a href="/sites/">{{ f'{supporting_count:,}' }} supporting sites found</a>
+    <a href="{{well_known_search}}" target="_blank" rel="noopener noreferrer">{{ f'{supporting_count:,}' }} supporting sites found</a>
   </footer>
   % end
 </div>

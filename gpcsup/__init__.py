@@ -13,8 +13,7 @@ from publicsuffixlist import PublicSuffixList
 from requests_oauthlib import OAuth1
 from urllib.parse import urlsplit
 
-from utils.param_parse import (ParamParseError, parse_params,
-                               integer_param, string_param, boolean_param)
+from utils.param_parse import ParamParseError, parse_params, string_param, boolean_param
 
 from .misc import html_default_error_hander, security_headers, set_headers
 
@@ -146,12 +145,22 @@ def extract_domain_from_url(url):
     return normalise_domain(domain)
 
 
-def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
+def construct_app(es_dao,
+                  service_protocol, service_hostname,
+                  service_port, service_path,
+                  well_known_service, testing_mode,
+                  **kwargs):
 
     app = Bottle()
     app.default_error_handler = html_default_error_hander
 
     app.install(security_headers)
+
+    service_address = f'{service_protocol}://{service_hostname}'
+    if service_port:
+        service_address += f':{service_port}'
+    if service_path:
+        service_address += service_path
 
     @app.get('/-/live')
     def live():
@@ -192,6 +201,18 @@ def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
     def global_privacy_control():
         return {'gpc': True, 'lastUpdate': '2021-07-17'}
 
+    @app.get('/sitemap.xml')
+    def sitemap():
+
+        total, results = es_dao.find(supports_gpc=True, is_base_domain=True,
+                                     sort=['rank', 'domain'], limit=1000, source=['domain'])
+        domains = [result[0]['domain'] for result in results]
+
+        for header, value in STATIC_FILE_HEADERS.items():
+            response.set_header(header, value)
+        response.set_header('Content-Type', 'text/xml')
+        return template('sitemap', service_address=service_address, domains=domains)
+
     @app.get('/')
     def index():
         try:
@@ -215,8 +236,12 @@ def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
         scanned_count = scanned_count_gl.get()
         supporting_count = supporting_count_gl.get()
 
+        well_known_search = f'{well_known_service}/?q=resource%3Agpc+gpc_support%3Atrue+is_base_domain%3Atrue#results'
+
         r = template('index', domain=domain,
-                     scanned_count=scanned_count, supporting_count=supporting_count)
+                     scanned_count=scanned_count,
+                     supporting_count=supporting_count,
+                     well_known_search=well_known_search)
         set_headers(r, STATIC_FILE_HEADERS)
         return r
 
@@ -250,29 +275,10 @@ def construct_app(es_dao, well_known_sites_endpoint, testing_mode, **kwargs):
                 else:
                     redirect(f'/sites/{domain}')
 
-        r = requests.post(well_known_sites_endpoint, data={'domain': domain, 'rescan': 'true'})
+        r = requests.post(well_known_service + '/sites/', data={'domain': domain, 'rescan': 'true'})
         r.raise_for_status()
 
         redirect(f'/sites/{domain}')
-
-    @app.get('/sites/')
-    def get_sites():
-        params = parse_params(request.params.decode(),
-                              page=integer_param('page', default=0, positive=True))
-        page = params['page']
-        offset = page * SITES_PAGE_SIZE
-
-        total, results = es_dao.find(supports_gpc=True, is_base_domain=True,
-                                     sort=['id'], offset=offset, limit=SITES_PAGE_SIZE, timeout=30)
-        domains = [result[0]['domain'] for result in results]
-
-        previous_page = page - 1 if page > 0 else None
-        next_page = page + 1
-        next_offset = next_page * SITES_PAGE_SIZE
-        if next_offset >= total:
-            next_page = None
-
-        return template('sites', domains=domains, previous_page=previous_page, next_page=next_page)
 
     @app.get('/sites/<domain>')
     def get_site(domain):
