@@ -230,11 +230,11 @@ def construct_app(es_dao,
                 domain = None
 
         scanned_count_gl = gevent.spawn(es_dao.count_scanned, timeout=30)
-        supporting_count_gl = gevent.spawn(es_dao.count_supporting, timeout=30)
+        reporting_count_gl = gevent.spawn(es_dao.count_reporting, timeout=30)
 
-        gevent.joinall([scanned_count_gl, supporting_count_gl], timeout=30)
+        gevent.joinall([scanned_count_gl, reporting_count_gl], timeout=30)
         scanned_count = scanned_count_gl.get()
-        supporting_count = supporting_count_gl.get()
+        supporting_count, _ = reporting_count_gl.get()
 
         well_known_search = f'{well_known_service}/?q=resource%3Agpc+gpc_support%3Atrue+is_base_domain%3Atrue#results'
 
@@ -369,42 +369,124 @@ def construct_app(es_dao,
     return app
 
 
-def run_twitter_worker(es_dao,
-                       twitter_consumer_key, twitter_consumer_secret,
-                       twitter_token_key, twitter_token_secret,
-                       testing_mode, **kwargs):
+def run_report(es_dao,
+               twitter_consumer_key, twitter_consumer_secret,
+               twitter_token_key, twitter_token_secret,
+               well_known_service, testing_mode, **kwargs):
 
     oauth = OAuth1(client_key=twitter_consumer_key,
                    client_secret=twitter_consumer_secret,
                    resource_owner_key=twitter_token_key,
                    resource_owner_secret=twitter_token_secret)
 
-    while True:
-        domains = es_dao.find_tweetable()
+    well_known_search = f'{well_known_service}/?q=resource%3Agpc+gpc_support%3Atrue+is_base_domain%3Atrue#results'
 
-        if domains:
-            for domain in domains:
-                if testing_mode:
-                    log.info('Would tweet about `%(domain)s` supporting GPC.',
-                             {'domain': domain})
-                else:
-                    es_dao.set_tweeting(domain, wait_for=True)
+    report_dt = rfc3339.now()
 
-                    tweet = f'{domain} is reporting that it supports #GPC'
-                    r = requests.post('https://api.twitter.com/1.1/statuses/update.json',
-                                      data={'status': tweet},
-                                      auth=oauth)
-                    r.raise_for_status()
+    last_report = es_dao.find_last_report()
 
-                    r_json = r.json()
-                    tweet_id = r_json['id_str']
+    if last_report:
+        last_report_dt = rfc3339.parse_datetime(last_report['report_dt'])
+        if report_dt - last_report_dt < timedelta(hours=16):
+            log.warning('Last report less than 16 hours ago: %(last_report_dt)s',
+                        {'last_report_dt': rfc3339.datetimetostr(last_report_dt)})
+            return False
 
-                    log.info('Tweeted about `%(domain)s` supporting GPC. Tweet ID: `%(tweet_id)s`',
-                             {'domain': domain,
-                              'tweet_id': tweet_id,
-                              'full_response': r_json})
+    supported, unsupported = es_dao.count_reporting()
+    scanned = es_dao.count_scanned()
 
-                    es_dao.set_tweeted(domain, wait_for=True)
+    tweeting = bool(supported or unsupported)
 
-        else:
-            time.sleep(60)
+    if last_report:
+
+        if supported == last_report['supported'] and \
+           unsupported == last_report['unsupported'] and \
+           scanned == last_report['scanned']:
+            # Don't tweet if nothing has changed since the last report.
+            tweeting = False
+            log.warning('No change in stats since last report: '
+                        '%(supported_count)d:%(unsupported_count)d/%(scanned_count)d',
+                        {'supported_count': supported,
+                         'unsupported_count': unsupported,
+                         'scanned_count': scanned})
+
+        if last_report['twitter_bot']['tweeting'] and not last_report['twitter_bot']['tweeted']:
+            log.warning('Last report wasn\'t tweeted: %(last_report_dt)s',
+                        {'last_report_dt': rfc3339.datetimetostr(last_report_dt)})
+
+    tweet = None
+    if tweeting:
+        tweet_lines = []
+
+        if supported:
+            tweet_line = f'{supported:,d} sites report they support #GPC'
+            if last_report:
+                last_supported = last_report['supported']
+                supported_change = supported - last_supported
+                if last_supported > 0:
+                    supported_change_percent = abs(supported_change / last_supported) * 100
+                    if supported_change > 0:
+                        tweet_line += f' (+{supported_change_percent:.3g}%)'
+                    elif supported_change < 0:
+                        tweet_line += f' (-{supported_change_percent:.3g}%)'
+            tweet_line += '.'
+            tweet_lines.append(tweet_line)
+
+        if unsupported:
+            tweet_line = f'{unsupported:,d} sites report they don\'t support #GPC'
+            if last_report:
+                last_unsupported = last_report['unsupported']
+                unsupported_change = unsupported - last_unsupported
+                if last_unsupported > 0:
+                    unsupported_change_percent = abs(unsupported_change / last_unsupported) * 100
+                    if unsupported_change > 0:
+                        tweet_line += f' (+{unsupported_change_percent:.3g}%)'
+                    elif unsupported_change < 0:
+                        tweet_line += f' (-{unsupported_change_percent:.3g}%)'
+            tweet_line += '.'
+            tweet_lines.append(tweet_line)
+
+        # Only report number of sites scanned if some reporting sites were found.
+        if scanned and (supported or unsupported):
+            tweet_line = f'{scanned:,d} sites scanned'
+            if last_report:
+                last_scanned = last_report['scanned']
+                scanned_change = scanned - last_scanned
+                if last_scanned > 0:
+                    scanned_change_percent = abs(scanned_change / last_scanned) * 100
+                    if scanned_change > 0:
+                        tweet_line += f' (+{scanned_change_percent:.3g}%)'
+                    elif scanned_change < 0:
+                        tweet_line += f' (-{scanned_change_percent:.3g}%)'
+            tweet_line += '.'
+            tweet_lines.append(tweet_line)
+
+        if supported:
+            tweet_lines.append(well_known_search)
+
+        tweet = '\n'.join(tweet_lines)
+
+    if testing_mode:
+        if tweeting:
+            log.info('Would tweet:\n%(tweet)s', {'tweet': tweet})
+    else:
+        es_dao.create_report(report_dt, supported, unsupported, scanned,
+                             tweeting=tweeting, wait_for=True)
+
+        if tweeting:
+            r = requests.post('https://api.twitter.com/1.1/statuses/update.json',
+                              data={'status': tweet},
+                              auth=oauth)
+            r.raise_for_status()
+
+            r_json = r.json()
+            tweet_id = r_json['id_str']
+
+            log.info('Tweeted report %(report_dt)s. Tweet ID: `%(tweet_id)s`',
+                     {'report_dt': rfc3339.datetimetostr(report_dt),
+                      'tweet_id': tweet_id,
+                      'full_response': r_json})
+
+            es_dao.set_tweeted(report_dt, tweet_id, wait_for=True)
+
+    return True

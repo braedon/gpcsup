@@ -1,5 +1,6 @@
 import rfc3339
 
+from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Search
 
 
@@ -63,44 +64,11 @@ def build_sort(sort, dict_form=False):
 
 class GpcSupDao(object):
 
-    def __init__(self, es_client, site_index, resource_index):
+    def __init__(self, es_client, report_index, site_index, resource_index):
         self.es_client = es_client
+        self.report_index = report_index
         self.site_index = site_index
         self.resource_index = resource_index
-
-    def set_tweeting(self, domain, timeout=30, wait_for=False):
-        body = {
-            'script': {
-                'source': (
-                    'if (!ctx._source.containsKey("gpcsup")) {'
-                    '  ctx._source.gpcsup = new HashMap();'
-                    '}'
-                    'ctx._source.gpcsup.tweeting = true;'
-                    'ctx._source.gpcsup.tweeted = false;'
-                    'ctx._source.gpcsup.tweet_dt = null;'
-                ),
-                'lang': 'painless'
-            }
-        }
-        self.es_client.update(index=self.resource_index, id=doc_id(domain), body=body,
-                              request_timeout=timeout, refresh='wait_for' if wait_for else 'false')
-
-    def set_tweeted(self, domain, timeout=30, wait_for=False):
-        now_dts = get_now_dts()
-        body = {
-            'script': {
-                'source': (
-                    'ctx._source.gpcsup.tweeted = true;'
-                    'ctx._source.gpcsup.tweet_dt = params.tweet_dt;'
-                ),
-                'lang': 'painless',
-                'params': {
-                    'tweet_dt': now_dts
-                }
-            }
-        }
-        self.es_client.update(index=self.resource_index, id=doc_id(domain), body=body,
-                              request_timeout=timeout, refresh='wait_for' if wait_for else 'false')
 
     def get(self, domain, timeout=30):
 
@@ -191,7 +159,7 @@ class GpcSupDao(object):
 
         return response.hits.total.value
 
-    def count_supporting(self, timeout=30):
+    def count_reporting(self, timeout=30):
 
         s = Search(using=self.es_client, index=self.resource_index)
         s = s.filter('term', **{'resource.keyword': 'gpc'})
@@ -200,41 +168,74 @@ class GpcSupDao(object):
         s = s.filter('terms', **{'status.keyword': ['ok', 'failed']})
         # Only count base domains.
         s = s.filter('term', **{'is_base_domain': True})
-        # Only count sites that report support.
+        # Only count sites that report whether they support GPC.
         s = s.filter('term', **{'scan_data.found': True})
-        s = s.filter('term', **{'scan_data.gpc.parsed.gpc': True})
 
         # Don't need any actual results - just the count.
         s = s[0:0]
         s = s.extra(track_total_hits=True)
         s = s.params(request_timeout=timeout)
 
+        s.aggs.bucket('supported', 'filter', term={'scan_data.gpc.parsed.gpc': True})
+
         response = s.execute()
 
-        return response.hits.total.value
+        supported = response.aggregations.supported.doc_count
+        unsupported = response.hits.total.value - supported
+        return supported, unsupported
 
-    def find_tweetable(self, limit=10, timeout=30):
+    def create_report(self, report_dt, supported, unsupported, scanned, tweeting,
+                      timeout=30, wait_for=False):
+        report_dts = rfc3339.datetimetostr(report_dt)
+        report_doc = {
+            'report_dt': report_dts,
+            'supported': supported,
+            'unsupported': unsupported,
+            'found': supported + unsupported,
+            'scanned': scanned,
+            'twitter_bot': {
+                'tweeting': bool(tweeting),
+                'tweeted': False
+            }
+        }
+        self.es_client.create(index=self.report_index, id=report_dts,
+                              body=report_doc, request_timeout=timeout,
+                              refresh='wait_for' if wait_for else 'false')
 
-        s = Search(using=self.es_client, index=self.resource_index)
-        s = s.filter('term', **{'resource.keyword': 'gpc'})
+    def find_last_report(self, timeout=30):
 
-        # Only tweet about sites where the last scan succeded, a gpc.json was
-        # found, and it indicates support for GPC.
-        s = s.filter('term', **{'status.keyword': 'ok'})
-        s = s.filter('term', **{'scan_data.found': True})
-        s = s.filter('term', **{'scan_data.gpc.parsed.gpc': True})
-        # Only tweet about base domains, not subdomains.
-        s = s.filter('term', **{'is_base_domain': True})
-        # Don't tweet about sites we're previously tweeted about (or may have).
-        # We may have set `tweeting` and failed before we could set `tweeted`. In this case, it's
-        # unclear if the tweet went out or not - needs to be checked manually.
-        s = s.exclude('term', **{'gpcsup.tweeting': True})
-        s = s.exclude('term', **{'gpcsup.tweeted': True})
+        s = Search(using=self.es_client, index=self.report_index)
 
-        s = s.sort('update_dt')
-        s = s[:limit]
+        s = s.sort('-report_dt')
+        s = s[:1]
         s = s.params(request_timeout=timeout)
 
-        response = s.execute()
+        try:
+            response = s.execute()
+        except NotFoundError:
+            return None
 
-        return [r.domain for r in response]
+        reports = [r.to_dict() for r in response]
+
+        return reports[0] if reports else None
+
+    def set_tweeted(self, report_dt, tweet_id, timeout=30, wait_for=False):
+        report_dts = rfc3339.datetimetostr(report_dt)
+        now_dts = get_now_dts()
+        body = {
+            'script': {
+                'source': (
+                    'ctx._source.twitter_bot.tweeted = true;'
+                    'ctx._source.twitter_bot.tweet_id = params.tweet_id;'
+                    'ctx._source.twitter_bot.tweet_dt = params.tweet_dt;'
+                ),
+                'lang': 'painless',
+                'params': {
+                    'tweet_id': tweet_id,
+                    'tweet_dt': now_dts
+                }
+            }
+        }
+        self.es_client.update(index=self.report_index, id=report_dts,
+                              body=body, request_timeout=timeout,
+                              refresh='wait_for' if wait_for else 'false')
