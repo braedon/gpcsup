@@ -474,13 +474,13 @@ def run_report(es_dao,
                              tweeting=tweeting, wait_for=True)
 
         if tweeting:
-            r = requests.post('https://api.twitter.com/1.1/statuses/update.json',
-                              data={'status': tweet},
+            r = requests.post('https://api.twitter.com/2/tweets',
+                              json={'text': tweet},
                               auth=oauth)
             r.raise_for_status()
 
             r_json = r.json()
-            tweet_id = r_json['id_str']
+            tweet_id = r_json['data']['id']
 
             log.info('Tweeted report %(report_dt)s. Tweet ID: `%(tweet_id)s`',
                      {'report_dt': rfc3339.datetimetostr(report_dt),
