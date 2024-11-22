@@ -23,7 +23,7 @@ rebase('base.tpl', title=f'GPC supported by {domain}',
       % if defined('message') and message:
       <p>
         However, its GPC support resource doesn't follow the
-        <a href="https://globalprivacycontrol.github.io/gpc-spec/#gpc-support-resource"
+        <a href="https://w3c.github.io/gpc/#gpc-support-resource"
            target="_blank" rel="noopener noreferrer">spec</a>
         exactly -
         {{message}}
